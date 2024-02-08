@@ -4,9 +4,9 @@ static const char *TAG = "udp";
 //-------------------------------------------------------------
 typedef struct
 {
-  unsigned char y_pos;
-  unsigned char x_pos;
-  char *str;
+    unsigned char y_pos;
+    unsigned char x_pos;
+    char *str;
 } qLCDData;
 //------------------------------------------------
 // lcd smth
@@ -28,61 +28,61 @@ typedef struct
 void udp_task(void *pvParameters)
 {
 // lcd smth
-  int sockfd;
-  char buf[10] = {};
+    int sockfd;
+    char buf[10] = {};
 // lcd smth
-  char str1[10];
-// lcd smth
-// lcd smth
-  struct sockaddr_in servaddr, cliaddr;
+    char str1[10];
 // lcd smth
 // lcd smth
-  while(1)
-  {
-    ESP_LOGI(TAG, "Create socket...\n");
-    if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) < 0 ) {
-      ESP_LOGE(TAG, "socket not created\n");
-      break;
-    }
-    ESP_LOGI(TAG, "Socket created");
-    memset(&servaddr, 0, sizeof(servaddr));
-    memset(&cliaddr, 0, sizeof(cliaddr));
-    uint32_t client_addr_len = sizeof(cliaddr);
-    //���������� ���������� � �������
-    servaddr.sin_family    = AF_INET; // IPv4
-    servaddr.sin_addr.s_addr = INADDR_ANY;
-    servaddr.sin_port = htons(CONFIG_SERVER_PORT);
-    //������ ����� � ������� �������
-    if (bind(sockfd, (const struct sockaddr *)&servaddr,  sizeof(struct sockaddr_in)) < 0 )
-    {
-      ESP_LOGI(TAG,"socket not binded");
-      shutdown(sockfd, 0);
-      close(sockfd);
-      break;
-    }
-    ESP_LOGI(TAG,"socket binded");
+    struct sockaddr_in servaddr, cliaddr;
+// lcd smth
+// lcd smth
     while(1)
     {
-      recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
-            &client_addr_len);
+        ESP_LOGI(TAG, "Create socket...\n");
+        if ( (sockfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) < 0 ) {
+            ESP_LOGE(TAG, "socket not created\n");
+            break;
+        }
+        ESP_LOGI(TAG, "Socket created");
+        memset(&servaddr, 0, sizeof(servaddr));
+        memset(&cliaddr, 0, sizeof(cliaddr));
+        uint32_t client_addr_len = sizeof(cliaddr);
+        //���������� ���������� � �������
+        servaddr.sin_family    = AF_INET; // IPv4
+        servaddr.sin_addr.s_addr = INADDR_ANY;
+        servaddr.sin_port = htons(CONFIG_SERVER_PORT);
+        //������ ����� � ������� �������
+        if (bind(sockfd, (const struct sockaddr *)&servaddr,  sizeof(struct sockaddr_in)) < 0 )
+        {
+            ESP_LOGI(TAG,"socket not binded");
+            shutdown(sockfd, 0);
+            close(sockfd);
+            break;
+        }
+        ESP_LOGI(TAG,"socket binded");
+        while(1)
+        {
+            recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
+                     &client_addr_len);
 
-      static uint8_t x = '0';
-      snprintf(str1, sizeof(str1), "%6f", *(short*)buf);
-      *(short*)buf = 32767 - *(short*)buf;
+            static int x = 32000;
+            snprintf(str1, sizeof(str1), "%6d\n", x);
+//      *(short*)buf = 32767 - *(short*)buf;
 
 
-      sendto(sockfd, &x, 1,  0, (struct sockaddr*) &cliaddr,  sizeof(cliaddr));
-        x++;
-      // lcd smth
+            sendto(sockfd, str1, 10,  0, (struct sockaddr*) &cliaddr,  sizeof(cliaddr));
+            x++;
+            // lcd smth
+        }
+        if (sockfd != -1) {
+            ESP_LOGE(TAG, "Shutting down socket and restarting...");
+            shutdown(sockfd, 0);
+            close(sockfd);
+        }
     }
-    if (sockfd != -1) {
-        ESP_LOGE(TAG, "Shutting down socket and restarting...");
-        shutdown(sockfd, 0);
-        close(sockfd);
-    }
-  }
 // lcd smth
 // lcd smth
-  vTaskDelete(NULL);
+    vTaskDelete(NULL);
 }
 //-------------------------------------------------------------
