@@ -1,4 +1,5 @@
 #include "main.h"
+#include "adc.h"
 //-------------------------------------------------------------
 static const char *TAG = "main";
 //-------------------------------------------------------------
@@ -26,4 +27,6 @@ void app_main(void)
   ret = wifi_init_sta();
   ESP_LOGI(TAG, "wifi_init_sta: %d", ret);
   xTaskCreate(udp_task, "udp_task", 4096, NULL, 5, NULL);
+    xTaskCreate(adc_task, "adc task", 4096, NULL, 5, NULL);
+
 }
