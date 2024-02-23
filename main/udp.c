@@ -1,4 +1,6 @@
 #include "udp.h"
+#include "adc.h"
+
 //-------------------------------------------------------------
 static const char *TAG = "udp";
 //-------------------------------------------------------------
@@ -65,14 +67,15 @@ void udp_task(void *pvParameters)
         {
             recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
                      &client_addr_len);
-
-            static int x = 32000;
-            snprintf(str1, sizeof(str1), "%6d\n", x);
+            while(1) {
+//                static int x = 32000;
+                int x = adc_get();
+                snprintf(str1, sizeof(str1), "%6d\n", x);
 //      *(short*)buf = 32767 - *(short*)buf;
 
-
-            sendto(sockfd, str1, 10,  0, (struct sockaddr*) &cliaddr,  sizeof(cliaddr));
-            x++;
+                sendto(sockfd, str1, 10, 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                x++;
+            }
             // lcd smth
         }
         if (sockfd != -1) {
