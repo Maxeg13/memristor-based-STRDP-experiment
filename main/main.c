@@ -7,9 +7,6 @@ static const char *TAG = "main";
 
 void app_main(void)
 {
-  gpio_reset_pin(17);
-  gpio_set_direction(17, GPIO_MODE_OUTPUT);
-  gpio_set_level(17, 1);
   //Initialize NVS
   esp_err_t ret = nvs_flash_init();
   if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {

@@ -29,16 +29,12 @@ typedef struct
 //------------------------------------------------
 void udp_task(void *pvParameters)
 {
-// lcd smth
     int sockfd;
     char buf[10] = {};
-// lcd smth
     char str1[10];
-// lcd smth
-// lcd smth
+
     struct sockaddr_in servaddr, cliaddr;
-// lcd smth
-// lcd smth
+
     while(1)
     {
         ESP_LOGI(TAG, "Create socket...\n");
@@ -72,11 +68,8 @@ void udp_task(void *pvParameters)
                 int x = adc_get();
                 snprintf(str1, sizeof(str1), "%6d\n", x);
 //      *(short*)buf = 32767 - *(short*)buf;
-
                 sendto(sockfd, str1, 10, 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-                x++;
             }
-            // lcd smth
         }
         if (sockfd != -1) {
             ESP_LOGE(TAG, "Shutting down socket and restarting...");

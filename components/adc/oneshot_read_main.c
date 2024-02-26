@@ -13,6 +13,9 @@
 #include "esp_log.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
+#include "../esp_spi_component/spi.h"
+#include "driver/gpio.h"
+
 //#include "esp_adc/adc_cali_scheme.h"
 
 QueueHandle_t queue;
@@ -61,8 +64,20 @@ int adc_get() {
     return val;
 }
 
+void dac_send(uint16_t x) {
+    static uint8_t mas[2];
+    mas[0] = x>>8;
+    mas[1] = x;
+
+    gpio_set_level(17, 0);
+    spi_transfer(mas, 2);
+    gpio_set_level(17, 1);
+}
+
 void adc_task(void*)
 {
+    spi_init();
+
     queue = xQueueCreate(4, sizeof(uint32_t));
 
     //-------------ADC1 Init---------------//
@@ -82,39 +97,27 @@ void adc_task(void*)
 
     //-------------ADC1 Calibration Init---------------//
     adc_cali_handle_t adc1_cali_chan0_handle = NULL;
-    adc_cali_handle_t adc1_cali_chan1_handle = NULL;
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN0, EXAMPLE_ADC_ATTEN, &adc1_cali_chan0_handle);
 
-
-#if EXAMPLE_USE_ADC2
-    //-------------ADC2 Init---------------//
-    adc_oneshot_unit_handle_t adc2_handle;
-    adc_oneshot_unit_init_cfg_t init_config2 = {
-        .unit_id = ADC_UNIT_2,
-        .ulp_mode = ADC_ULP_MODE_DISABLE,
-    };
-    ESP_ERROR_CHECK(adc_oneshot_new_unit(&init_config2, &adc2_handle));
-
-    //-------------ADC2 Calibration Init---------------//
-    adc_cali_handle_t adc2_cali_handle = NULL;
-    bool do_calibration2 = example_adc_calibration_init(ADC_UNIT_2, EXAMPLE_ADC2_CHAN0, EXAMPLE_ADC_ATTEN, &adc2_cali_handle);
-
-    //-------------ADC2 Config---------------//
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc2_handle, EXAMPLE_ADC2_CHAN0, &config));
-#endif  //#if EXAMPLE_USE_ADC2
-
-#include "esp_rom_gpio.h"
     while (1) {
+        gpio_reset_pin(17);
+        gpio_set_direction(17, GPIO_MODE_OUTPUT);
+
+
         ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
 
         ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
         if (do_calibration1_chan0) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+//            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
 //            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage[0][0]);
         }
         xQueueSend(queue, &voltage,0);
-        vTaskDelay(pdMS_TO_TICKS(100));
 
+        static uint16_t val=0;
+        val+=40;
+        dac_send(val);
+
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 
     //Tear Down
