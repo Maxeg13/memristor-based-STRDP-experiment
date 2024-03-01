@@ -20,9 +20,7 @@ void app_main(void)
   ESP_LOGI(TAG, "esp_netif_init: %d", ret);
   ret = esp_event_loop_create_default();
   ESP_LOGI(TAG, "esp_event_loop_create_default: %d", ret);
-//  ret = i2c_ini();
-//  ESP_LOGI(TAG, "i2c_ini: %d", ret);
-//  LCD_ini();
+
   ret = wifi_init_sta();
   ESP_LOGI(TAG, "wifi_init_sta: %d", ret);
   xTaskCreate(udp_task, "udp_task", 4096, NULL, 5, NULL);

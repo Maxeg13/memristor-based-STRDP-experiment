@@ -13,14 +13,15 @@
 #include "esp_log.h"
 #include "esp_adc/adc_oneshot.h"
 #include "esp_adc/adc_cali.h"
-#include "../esp_spi_component/spi.h"
+#include "../spi_component/spi.h"
 #include "driver/gpio.h"
+#include "esp_adc/adc_cali_scheme.h"
 
-//#include "esp_adc/adc_cali_scheme.h"
+#define SYNC 17
 
 QueueHandle_t queue;
 
-const static char *TAG = "EXAMPLE";
+const static char *TAG = "";
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -42,14 +43,15 @@ const static char *TAG = "EXAMPLE";
 #define EXAMPLE_USE_ADC2            0
 #endif
 
-#if EXAMPLE_USE_ADC2
-//ADC2 Channels
-#if CONFIG_IDF_TARGET_ESP32
-#define EXAMPLE_ADC2_CHAN0          ADC_CHANNEL_0
-#else
-#define EXAMPLE_ADC2_CHAN0          ADC_CHANNEL_0
-#endif
-#endif  //#if EXAMPLE_USE_ADC2
+#define DAC_RANGE 0x7FF
+
+#include "math.h"
+float trace(float x) {
+    const float alpha = 3.5;
+    return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 2.7)));
+}
+
+#define SYNC 17
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_11
 
@@ -64,19 +66,24 @@ int adc_get() {
     return val;
 }
 
+//0x7FF
 void dac_send(uint16_t x) {
     static uint8_t mas[2];
     mas[0] = x>>8;
     mas[1] = x;
 
-    gpio_set_level(17, 0);
-    spi_transfer(mas, 2);
-    gpio_set_level(17, 1);
+    gpio_set_level(SYNC, 0);
+    spi_transfer(&mas[0], 2);
+//    esp_rom_delay_us(1);
+    gpio_set_level(SYNC, 1);
 }
 
 void adc_task(void*)
 {
     spi_init();
+
+    gpio_reset_pin(SYNC);
+    gpio_set_direction(SYNC, GPIO_MODE_OUTPUT);
 
     queue = xQueueCreate(4, sizeof(uint32_t));
 
@@ -100,24 +107,28 @@ void adc_task(void*)
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN0, EXAMPLE_ADC_ATTEN, &adc1_cali_chan0_handle);
 
     while (1) {
-        gpio_reset_pin(17);
-        gpio_set_direction(17, GPIO_MODE_OUTPUT);
-
-
         ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
 
-        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
+//        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
         if (do_calibration1_chan0) {
-//            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
-//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage[0][0]);
+            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
         }
         xQueueSend(queue, &voltage,0);
 
-        static uint16_t val=0;
-        val+=40;
-        dac_send(val);
+//        esp_rom_delay_us(5);
+        static float t = 0;
+        t += 0.1;
+        if(t>15) t=0;
+        static uint16_t dac_val=0;
+//        dac_val+=40;
+//        if(dac_val > (dac_val&0x7FF)) dac_val = 0;
+//
+//        esp_timer_get_time
+        dac_val = (1. + trace(t)) * DAC_RANGE/2;
+        dac_send(dac_val);
 
-        vTaskDelay(pdMS_TO_TICKS(1));
+//        vTaskDelay(pdMS_TO_TICKS(20));
     }
 
     //Tear Down

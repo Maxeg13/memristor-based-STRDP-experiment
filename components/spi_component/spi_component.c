@@ -20,9 +20,9 @@ static spi_device_interface_config_t s_devcfg={
 void spi_init()
 {
     spi_bus_config_t buscfg={
-            .miso_io_num = -1,
-            .mosi_io_num = 26,
-            .sclk_io_num = 25,
+            .miso_io_num = 26,
+            .mosi_io_num = 25,
+            .sclk_io_num = 27,
             .quadwp_io_num = -1,
             .quadhd_io_num = -1,
     };
@@ -42,15 +42,17 @@ void spi_init()
 
 void spi_transfer(
         void* buf,
-        const size_t size
-)
+        const size_t size)
 {
+    static uint16_t x;
     spi_transaction_t desc = {
             .tx_buffer = buf,
-            .length = size,
+            .length = size*8,
             .rx_buffer = NULL,
             .rxlength = 0
     };
+
+//    ESP_LOGI("", "rec: %d", x);
 
     ESP_ERROR_CHECK(spi_device_transmit(s_handle, &desc));
 }

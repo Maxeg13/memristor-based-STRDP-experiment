@@ -1,4 +1,4 @@
-set(SRC_NAME esp_spi_component)
+set(SRC_NAME spi_component)
 
 idf_component_register(
         SRCS  ${CMAKE_CURRENT_SOURCE_DIR}/${SRC_NAME}.c     # list the source files of this component
