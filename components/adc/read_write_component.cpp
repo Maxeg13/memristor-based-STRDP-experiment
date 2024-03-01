@@ -3,6 +3,8 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+
+extern "C"{
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,12 +18,21 @@
 #include "../spi_component/spi.h"
 #include "driver/gpio.h"
 #include "esp_adc/adc_cali_scheme.h"
+#include "math.h"
+#include "adc.h"
+}
 
 #define SYNC 17
 
 QueueHandle_t queue;
 
 const static char *TAG = "";
+
+class Neuron {
+public:
+    Neuron(){}
+
+};
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -45,7 +56,6 @@ const static char *TAG = "";
 
 #define DAC_RANGE 0x7FF
 
-#include "math.h"
 float trace(float x) {
     const float alpha = 3.5;
     return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 2.7)));
@@ -72,18 +82,17 @@ void dac_send(uint16_t x) {
     mas[0] = x>>8;
     mas[1] = x;
 
-    gpio_set_level(SYNC, 0);
+    gpio_set_level(static_cast<gpio_num_t>(SYNC), 0);
     spi_transfer(&mas[0], 2);
-//    esp_rom_delay_us(1);
-    gpio_set_level(SYNC, 1);
+    gpio_set_level(static_cast<gpio_num_t>(SYNC), 1);
 }
 
 void adc_task(void*)
 {
     spi_init();
 
-    gpio_reset_pin(SYNC);
-    gpio_set_direction(SYNC, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(static_cast<gpio_num_t>(SYNC));
+    gpio_set_direction(static_cast<gpio_num_t>(SYNC), GPIO_MODE_OUTPUT);
 
     queue = xQueueCreate(4, sizeof(uint32_t));
 
@@ -96,8 +105,8 @@ void adc_task(void*)
 
     //-------------ADC1 Config---------------//
     adc_oneshot_chan_cfg_t config = {
-        .bitwidth = ADC_BITWIDTH_DEFAULT,
-        .atten = EXAMPLE_ADC_ATTEN,
+            .atten = EXAMPLE_ADC_ATTEN,
+            .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN0, &config));
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN1, &config));

@@ -1,4 +1,4 @@
-idf_component_register(SRCS "read_write_component.c"
+idf_component_register(SRCS "read_write_component.cpp"
                     INCLUDE_DIRS "."
 #        "C:/Espressif/frameworks/esp-idf-v5.1.1/components/driver/gpio"
 #        "C:/Espressif/frameworks/esp-idf-v5.1.1/components/driver/gpio/include"
