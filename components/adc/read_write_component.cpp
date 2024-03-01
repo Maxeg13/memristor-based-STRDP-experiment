@@ -17,22 +17,46 @@ extern "C"{
 #include "esp_adc/adc_cali.h"
 #include "../spi_component/spi.h"
 #include "driver/gpio.h"
+#include "driver/gptimer.h"
 #include "esp_adc/adc_cali_scheme.h"
 #include "math.h"
 #include "adc.h"
 }
 
 #define SYNC 17
+#define DT  0.5
 
 QueueHandle_t queue;
 
 const static char *TAG = "";
 
 class Neuron {
+    float v;
+    float u;
+    static const float a;
+    static const float b;
+    static const float c;
+    static const float d;
 public:
-    Neuron(){}
-
+    Neuron():v(c){}
+    bool eval(float I) {
+        float _v = v;
+        v += DT*(0.04*v*v + 5*v + 140 - u + I);
+        u += DT*a*(b*_v - u);
+        if(v>30) {
+            v = c;
+            u += d;
+            return true;
+        } else {
+            return false;
+        }
+    }
 };
+
+const float Neuron::a = 0.02;
+const float Neuron::b = 0.2;
+const float Neuron::c = -65;
+const float Neuron::d = 8;
 
 /*---------------------------------------------------------------
         ADC General Macros
@@ -57,8 +81,8 @@ public:
 #define DAC_RANGE 0x7FF
 
 float trace(float x) {
-    const float alpha = 3.5;
-    return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 2.7)));
+    const float alpha = .4;
+    return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 50)));
 }
 
 #define SYNC 17
@@ -89,6 +113,19 @@ void dac_send(uint16_t x) {
 
 void adc_task(void*)
 {
+    gptimer_handle_t gptimer = NULL;
+    gptimer_config_t timer_config = {
+            .clk_src = GPTIMER_CLK_SRC_DEFAULT,
+            .direction = GPTIMER_COUNT_UP,
+            .resolution_hz = 2000, // 1MHz, 1 tick = 1us
+    };
+    ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
+
+    ESP_ERROR_CHECK(gptimer_enable(gptimer));
+    ESP_ERROR_CHECK(gptimer_start(gptimer));
+
+    //////////////////
+
     spi_init();
 
     gpio_reset_pin(static_cast<gpio_num_t>(SYNC));
@@ -115,28 +152,38 @@ void adc_task(void*)
     adc_cali_handle_t adc1_cali_chan0_handle = NULL;
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN0, EXAMPLE_ADC_ATTEN, &adc1_cali_chan0_handle);
 
+    Neuron n1{};
+    Neuron n2{};
+
     while (1) {
-        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
-
-//        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
-        if (do_calibration1_chan0) {
-            ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
-//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
-        }
-        xQueueSend(queue, &voltage,0);
-
-//        esp_rom_delay_us(5);
-        static float t = 0;
-        t += 0.1;
-        if(t>15) t=0;
-        static uint16_t dac_val=0;
+        static uint64_t count;
+        uint64_t now;
+        ESP_ERROR_CHECK(gptimer_get_raw_count(gptimer, &now));
+        for(int step = 0; step<(now-count); step++) {
+            count = now;
+//            ESP_LOGI(TAG, "count: %d", (int)now);
+            static float t = 0;
+            t += DT;
+            if(t>80) t=0;
+            static uint16_t dac_val=0;
 //        dac_val+=40;
 //        if(dac_val > (dac_val&0x7FF)) dac_val = 0;
-//
-//        esp_timer_get_time
-        dac_val = (1. + trace(t)) * DAC_RANGE/2;
-        dac_send(dac_val);
 
+            n1.eval(0.0001);
+            n2.eval(0.0001);
+
+            dac_val = (1. + trace(t)) * DAC_RANGE/2;
+            dac_send(dac_val);
+
+            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
+
+//        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
+            if (do_calibration1_chan0) {
+                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
+            }
+            xQueueSend(queue, &voltage,0);
+        }
 //        vTaskDelay(pdMS_TO_TICKS(20));
     }
 

@@ -92,8 +92,8 @@ static esp_netif_t *wifi_start(void)
 
   wifi_config_t wifi_config = {
       .sta = {
-          .ssid = "dlink",
-          .password = "chibisain123",
+          .ssid = "dlink3",
+          .password = "biorobot",
           .scan_method = WIFI_SCAN_METHOD,
           .sort_method = WIFI_CONNECT_AP_SORT_METHOD,
           .threshold.rssi = CONFIG_WIFI_SCAN_RSSI_THRESHOLD,
