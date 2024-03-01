@@ -23,7 +23,9 @@ extern "C"{
 #include "adc.h"
 }
 
-#define SYNC 17
+#define GND_SWITCH  static_cast<gpio_num_t>(16)
+#define AMP_SWITCH  static_cast<gpio_num_t>(14)
+#define SYNC        static_cast<gpio_num_t>(17)
 #define DT  0.5
 
 QueueHandle_t queue;
@@ -85,8 +87,6 @@ float trace(float x) {
     return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 50)));
 }
 
-#define SYNC 17
-
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_11
 
 static int adc_raw;
@@ -106,9 +106,9 @@ void dac_send(uint16_t x) {
     mas[0] = x>>8;
     mas[1] = x;
 
-    gpio_set_level(static_cast<gpio_num_t>(SYNC), 0);
+    gpio_set_level(SYNC, 0);
     spi_transfer(&mas[0], 2);
-    gpio_set_level(static_cast<gpio_num_t>(SYNC), 1);
+    gpio_set_level(SYNC, 1);
 }
 
 void adc_task(void*)
@@ -128,8 +128,12 @@ void adc_task(void*)
 
     spi_init();
 
-    gpio_reset_pin(static_cast<gpio_num_t>(SYNC));
-    gpio_set_direction(static_cast<gpio_num_t>(SYNC), GPIO_MODE_OUTPUT);
+    gpio_reset_pin(GND_SWITCH);
+    gpio_set_direction(GND_SWITCH, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(AMP_SWITCH);
+    gpio_set_direction(AMP_SWITCH, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(SYNC);
+    gpio_set_direction(SYNC, GPIO_MODE_OUTPUT);
 
     queue = xQueueCreate(4, sizeof(uint32_t));
 
