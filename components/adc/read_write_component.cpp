@@ -23,7 +23,8 @@ extern "C"{
 #include "adc.h"
 }
 
-#define GND_SWITCH  static_cast<gpio_num_t>(16)
+#define TURN_ON     static_cast<gpio_num_t>(21)
+#define DIODE_SWITCH  static_cast<gpio_num_t>(16)
 #define AMP_SWITCH  static_cast<gpio_num_t>(14)
 #define SYNC        static_cast<gpio_num_t>(17)
 #define DT  0.5
@@ -40,7 +41,7 @@ class Neuron {
     static const float c;
     static const float d;
 public:
-    Neuron():v(c){}
+    Neuron():v(c), u(0){}
     bool eval(float I) {
         float _v = v;
         v += DT*(0.04*v*v + 5*v + 140 - u + I);
@@ -128,8 +129,10 @@ void adc_task(void*)
 
     spi_init();
 
-    gpio_reset_pin(GND_SWITCH);
-    gpio_set_direction(GND_SWITCH, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(TURN_ON);
+    gpio_set_direction(TURN_ON, GPIO_MODE_OUTPUT);
+    gpio_reset_pin(DIODE_SWITCH);
+    gpio_set_direction(DIODE_SWITCH, GPIO_MODE_OUTPUT);
     gpio_reset_pin(AMP_SWITCH);
     gpio_set_direction(AMP_SWITCH, GPIO_MODE_OUTPUT);
     gpio_reset_pin(SYNC);
@@ -160,11 +163,23 @@ void adc_task(void*)
     Neuron n2{};
 
     while (1) {
+        static uint64_t main_count;
         static uint64_t count;
         uint64_t now;
         ESP_ERROR_CHECK(gptimer_get_raw_count(gptimer, &now));
-        for(int step = 0; step<(now-count); step++) {
-            count = now;
+
+//        // tests
+        if(now >= count+2000) {
+            ESP_LOGI(TAG, "change lvl");
+            count = now/2000*2000;
+            static uint32_t lvl=0;
+            lvl^=1;
+            gpio_set_level(TURN_ON, lvl);
+        }
+
+        // main
+        for(int step = 0; step<(now-main_count); step++) {
+            main_count = now;
 //            ESP_LOGI(TAG, "count: %d", (int)now);
             static float t = 0;
             t += DT;
@@ -186,7 +201,7 @@ void adc_task(void*)
                 ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
 //            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
             }
-            xQueueSend(queue, &voltage,0);
+//            xQueueSend(queue, &voltage,0);
         }
 //        vTaskDelay(pdMS_TO_TICKS(20));
     }
