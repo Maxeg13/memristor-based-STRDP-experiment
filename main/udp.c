@@ -61,8 +61,9 @@ void udp_task(void *pvParameters)
         ESP_LOGI(TAG,"socket binded");
         while(1)
         {
-            recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
+            size_t rec_size = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
                      &client_addr_len);
+            // rec from ncat and parse
             while(1) {
 //                static int x = 32000;
                 int x = adc_get();

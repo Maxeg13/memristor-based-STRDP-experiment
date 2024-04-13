@@ -3,5 +3,6 @@
 
 void adc_task(void*);
 int adc_get();
+void adc_init();
 
 #endif //WIFI_STA_UDP_SERVER_ADC_H

@@ -112,6 +112,13 @@ void dac_send(uint16_t x) {
     gpio_set_level(SYNC, 1);
 }
 
+void adc_init() {
+    gpio_reset_pin(TURN_ON);
+    gpio_set_direction(TURN_ON, GPIO_MODE_OUTPUT);
+    gpio_set_level(TURN_ON, 1);
+}
+
+
 void adc_task(void*)
 {
     gptimer_handle_t gptimer = NULL;
@@ -129,8 +136,6 @@ void adc_task(void*)
 
     spi_init();
 
-    gpio_reset_pin(TURN_ON);
-    gpio_set_direction(TURN_ON, GPIO_MODE_OUTPUT);
     gpio_reset_pin(DIODE_SWITCH);
     gpio_set_direction(DIODE_SWITCH, GPIO_MODE_OUTPUT);
     gpio_reset_pin(AMP_SWITCH);
@@ -175,6 +180,12 @@ void adc_task(void*)
             static uint32_t lvl=0;
             lvl^=1;
             gpio_set_level(TURN_ON, lvl);
+
+            if (do_calibration1_chan0) {
+                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
+            }
+            xQueueSend(queue, &voltage,0);
         }
 
         // main
@@ -197,11 +208,7 @@ void adc_task(void*)
             ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
 
 //        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
-            if (do_calibration1_chan0) {
-                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
-//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
-            }
-//            xQueueSend(queue, &voltage,0);
+
         }
 //        vTaskDelay(pdMS_TO_TICKS(20));
     }
