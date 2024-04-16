@@ -83,6 +83,8 @@ const float Neuron::d = 8;
 
 #define DAC_RANGE 0x7FF
 
+int sigmoid_delay = 50;
+
 float trace(float x) {
     const float alpha = .4;
     return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 50)));
@@ -138,8 +140,10 @@ void adc_task(void*)
 
     gpio_reset_pin(DIODE_SWITCH);
     gpio_set_direction(DIODE_SWITCH, GPIO_MODE_OUTPUT);
+    gpio_set_level(DIODE_SWITCH, 1);
     gpio_reset_pin(AMP_SWITCH);
     gpio_set_direction(AMP_SWITCH, GPIO_MODE_OUTPUT);
+    gpio_set_level(AMP_SWITCH, 1);
     gpio_reset_pin(SYNC);
     gpio_set_direction(SYNC, GPIO_MODE_OUTPUT);
 

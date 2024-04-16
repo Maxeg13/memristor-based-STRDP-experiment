@@ -1,5 +1,6 @@
 #include "udp.h"
 #include "adc.h"
+#include "string.h"
 
 //-------------------------------------------------------------
 static const char *TAG = "udp";
@@ -10,28 +11,12 @@ typedef struct
     unsigned char x_pos;
     char *str;
 } qLCDData;
-//------------------------------------------------
-// lcd smth
-//------------------------------------------------
-//void vLCDTask(void* arg)
-//{
-//  BaseType_t xStatus;
-//  qLCDData xReceivedData;
-//  for(;;) {
-//    xStatus = xQueueReceive(lcd_string_queue, &xReceivedData, 10000 /portTICK_PERIOD_MS);
-//    if (xStatus == pdPASS)
-//    {
-//      LCD_SetPos(xReceivedData.x_pos,xReceivedData.y_pos);
-//      LCD_String(xReceivedData.str);
-//    }
-//  }
-//}
-//------------------------------------------------
+
 void udp_task(void *pvParameters)
 {
     int sockfd;
-    char buf[10] = {};
-    char str1[10];
+    char buf[30] = {};
+    char str1[30];
 
     struct sockaddr_in servaddr, cliaddr;
 
@@ -63,14 +48,24 @@ void udp_task(void *pvParameters)
         {
             size_t rec_size = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
                      &client_addr_len);
-            // rec from ncat and parse
-            while(1) {
-//                static int x = 32000;
-                int x = adc_get();
-                snprintf(str1, sizeof(str1), "%6d\n", x);
-//      *(short*)buf = 32767 - *(short*)buf;
-                sendto(sockfd, str1, 10, 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+
+            if(memcmp(buf, "help", 4) == 0) {
+                const char* help = "\tMemristive STDRP board\n"
+                                   "parameters available:\t\n"
+                                   "\tsigmoid delay\n";
+                sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            } else if(memcmp(buf, "sigmoid delay", 4) == 0) {
+                const char* sd = "\tEnter new sigmoid delay value\n";
+                sendto(sockfd, sd, strlen(sd), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+
             }
+
+            // rec from ncat and parse
+//            while(1) {
+//                int x = adc_get();
+//                snprintf(str1, sizeof(str1), "%6d\n", x);
+//                sendto(sockfd, str1, 10, 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+//            }
         }
         if (sockfd != -1) {
             ESP_LOGE(TAG, "Shutting down socket and restarting...");

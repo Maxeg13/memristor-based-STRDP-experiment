@@ -28,3 +28,5 @@ void app_main(void)
   xTaskCreate(udp_task, "udp_task", 4096, NULL, 5, NULL);
     xTaskCreate(adc_task, "evaluation task", 4096, NULL, 6, NULL);
 }
+
+// idf.py -p COM12 app-flash
