@@ -83,11 +83,13 @@ const float Neuron::d = 8;
 
 #define DAC_RANGE 0x7FF
 
-int sigmoid_delay = 50;
+extern int sigmoid_delay;
+extern float tau_p;
+extern float F_p;
+extern float F_m;
 
 float trace(float x) {
-    const float alpha = .4;
-    return exp(-alpha * x) - 1./(1 + exp(-alpha * (x - 50)));
+    return F_p * exp(-x/tau_p) - F_m/(1 + exp(-(x - sigmoid_delay)/tau_p));
 }
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_11
@@ -104,10 +106,15 @@ int adc_get() {
 }
 
 //0x7FF
-void dac_send(uint16_t x) {
+void dac_send(float x) {
+    static const float tovolts = 3.3/DAC_RANGE;
+    static const float todac = 1/tovolts;
+
+    uint16_t xi = x*todac + DAC_RANGE/2;
+
     static uint8_t mas[2];
-    mas[0] = x>>8;
-    mas[1] = x;
+    mas[0] = xi>>8;
+    mas[1] = xi;
 
     gpio_set_level(SYNC, 0);
     spi_transfer(&mas[0], 2);
@@ -199,15 +206,13 @@ void adc_task(void*)
             static float t = 0;
             t += DT;
             if(t>80) t=0;
-            static uint16_t dac_val=0;
 //        dac_val+=40;
 //        if(dac_val > (dac_val&0x7FF)) dac_val = 0;
 
             n1.eval(0.0001);
             n2.eval(0.0001);
 
-            dac_val = (1. + trace(t)) * DAC_RANGE/2;
-            dac_send(dac_val);
+            dac_send(trace(t));
 
             ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
 
