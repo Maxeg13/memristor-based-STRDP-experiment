@@ -9,10 +9,16 @@ extern "C" {
 static const char *TAG = "udp";
 //-------------------------------------------------------------
 
+// trace
 int sigmoid_delay = 50;
 float tau_p = 1/0.4;
 float F_p = 1.;
 float F_m = 1.;
+
+//protocol
+int stimulus_T1 = 80;
+int stimulus_T2 = 80;
+int stimulus_delay2 = 40;
 
 struct {
     char* p;
@@ -94,22 +100,24 @@ void udp_task(void *pvParameters)
             break;
         }
         ESP_LOGI(TAG,"socket binded");
-        while(1)
-        {
-            size_t rec_size = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *)&cliaddr,
-                     &client_addr_len);
+        while(1) {
+            size_t rec_size = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *) &cliaddr,
+                                       &client_addr_len);
 
             stream.p = buf;
             stream.left = rec_size;
 
-            if(stream_parse_word("help")) {
-                const char* help =  "___________________________\n"
-                                    "  Memristive STDRP board\n"
-                                   "usage: complete set <sigmoid delay (int ms)> <tau plus (float)>\n"
-                                   ""
-                                    "___________________________\n# ";
+            if (stream_parse_word("help")) {
+                const char *help = "___________________________\n"
+                                   "  Memristive STDRP board\n"
+                                   "usage: \n    trace set <sigmoid delay (int ms)> <tau plus (float ms)>"
+                                   "<F plus (float volts)> "
+                                   "<F minus (float volts)>\n"
+                                   "    protocol set <stimulus_T1 (int ms)> <stimulus_T2 (int ms)> "
+                                   "<stimulus_delay2 (int ms)>\n"
+                                   "___________________________\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("complete set")) {
+            } else if (stream_parse_word("trace set")) {
                 sigmoid_delay = stream_parse_int();
                 tau_p = stream_parse_float();
                 F_p = stream_parse_float();
@@ -120,9 +128,20 @@ void udp_task(void *pvParameters)
                                              "\ttau plus\t%4.2f\n"
                                              "\tF plus\t\t%4.2f\n"
                                              "\tF minus\t\t%4.2f\n# ",
-                                             sigmoid_delay, tau_p, F_p, F_m);
+                         sigmoid_delay, tau_p, F_p, F_m);
                 sendto(sockfd, str1, sizeof(str1), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else {
+            } else if(stream_parse_word("protocol set")) { 
+                stimulus_T1 = stream_parse_int();
+                stimulus_T2 = stream_parse_int();
+                stimulus_delay2 = stream_parse_int();
+
+                snprintf(str1, sizeof(str1), "    settings done:\n"
+                                             "\tstimulus T1\t%d\n"
+                                             "\tstimulus T2\t%d\n"
+                                             "\tstimulus 2 delay\t%d\n# ",
+                         stimulus_T1, stimulus_T2, stimulus_delay2);
+                sendto(sockfd, str1, sizeof(str1), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            }else {
                 const char* help =  "failed to parse the incoming packet\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             }

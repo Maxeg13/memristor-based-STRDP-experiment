@@ -83,13 +83,19 @@ const float Neuron::d = 8;
 
 #define DAC_RANGE 0x7FF
 
+// trace
 extern int sigmoid_delay;
 extern float tau_p;
 extern float F_p;
 extern float F_m;
 
-float trace(float x) {
-    return F_p * exp(-x/tau_p) - F_m/(1 + exp(-(x - sigmoid_delay)/tau_p));
+//protocol
+extern int stimulus_T1;
+extern int stimulus_T2;
+extern int stimulus_delay2;
+
+float trace(float t) {
+    return F_p * exp(-t/tau_p) - F_m/(1 + exp(-(t - sigmoid_delay)/tau_p));
 }
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_11
@@ -203,16 +209,28 @@ void adc_task(void*)
         for(int step = 0; step<(now-main_count); step++) {
             main_count = now;
 //            ESP_LOGI(TAG, "count: %d", (int)now);
-            static float t = 0;
-            t += DT;
-            if(t>80) t=0;
-//        dac_val+=40;
-//        if(dac_val > (dac_val&0x7FF)) dac_val = 0;
+            static float trace_t = 0;
+            static float t1 = 0;
+            static float t2 = 0;
 
-            n1.eval(0.0001);
+            float stimulus1 = 0;
+
+            trace_t += DT;
+            t1 += DT;
+            t2 += DT;
+//            if(t>80) t=0;
+            if(t1 > stimulus_T1) {
+                t1 = 0;
+                stimulus1 = 0.1;
+            }
+
+            if(n1.eval(stimulus1)) {
+                trace_t = 0;
+            }
+
             n2.eval(0.0001);
 
-            dac_send(trace(t));
+            dac_send(trace(trace_t));
 
             ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
 
