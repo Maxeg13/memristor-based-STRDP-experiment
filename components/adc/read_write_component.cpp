@@ -9,7 +9,7 @@ extern "C"{
 #include <stdlib.h>
 #include <string.h>
 #include "freertos/FreeRTOS.h"
-#include "freertos/queue.h"
+//#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "soc/soc_caps.h"
 #include "esp_log.h"
@@ -21,15 +21,12 @@ extern "C"{
 #include "esp_adc/adc_cali_scheme.h"
 #include "math.h"
 #include "adc.h"
+#include "../../main/udp.h"
 }
 
 #define TURN_ON     static_cast<gpio_num_t>(21)
-#define DIODE_SWITCH  static_cast<gpio_num_t>(16)
-#define AMP_SWITCH  static_cast<gpio_num_t>(14)
 #define SYNC        static_cast<gpio_num_t>(17)
 #define DT  0.5
-
-QueueHandle_t queue;
 
 const static char *TAG = "";
 
@@ -90,6 +87,7 @@ extern float F_p;
 extern float F_m;
 
 //protocol
+extern bool protocol_on;
 extern int stimulus_T1;
 extern int stimulus_T2;
 extern int stimulus_delay2;
@@ -105,15 +103,9 @@ static int voltage;
 static bool example_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle);
 static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 
-int adc_get() {
-    int val;
-    xQueueReceive(queue, &val, 1000);
-    return val;
-}
-
-//0x7FF
+// means after amplifier, memristor in
 void dac_send(float x) {
-    static const float tovolts = 3.3/DAC_RANGE;
+    static const float tovolts = 10. * 4.7 * 3.3/DAC_RANGE;
     static const float todac = 1/tovolts;
 
     uint16_t xi = x*todac + DAC_RANGE/2;
@@ -133,6 +125,8 @@ void adc_init() {
     gpio_set_level(TURN_ON, 1);
 }
 
+adc_oneshot_unit_handle_t adc1_handle;
+adc_cali_handle_t adc1_cali_chan0_handle = NULL;
 
 void adc_task(void*)
 {
@@ -140,7 +134,7 @@ void adc_task(void*)
     gptimer_config_t timer_config = {
             .clk_src = GPTIMER_CLK_SRC_DEFAULT,
             .direction = GPTIMER_COUNT_UP,
-            .resolution_hz = 2000, // 1MHz, 1 tick = 1us
+            .resolution_hz = 2000, // 1 tick = 0.5us
     };
     ESP_ERROR_CHECK(gptimer_new_timer(&timer_config, &gptimer));
 
@@ -160,10 +154,7 @@ void adc_task(void*)
     gpio_reset_pin(SYNC);
     gpio_set_direction(SYNC, GPIO_MODE_OUTPUT);
 
-    queue = xQueueCreate(4, sizeof(uint32_t));
-
     //-------------ADC1 Init---------------//
-    adc_oneshot_unit_handle_t adc1_handle;
     adc_oneshot_unit_init_cfg_t init_config1 = {
         .unit_id = ADC_UNIT_1,
     };
@@ -178,7 +169,6 @@ void adc_task(void*)
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN1, &config));
 
     //-------------ADC1 Calibration Init---------------//
-    adc_cali_handle_t adc1_cali_chan0_handle = NULL;
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN0, EXAMPLE_ADC_ATTEN, &adc1_cali_chan0_handle);
 
     Neuron n1{};
@@ -202,7 +192,9 @@ void adc_task(void*)
                 ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
 //            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
             }
-            xQueueSend(queue, &voltage,0);
+
+            if(!protocol_on) continue;
+            proj_udp_send("test\n", 5);
         }
 
         // main
@@ -232,7 +224,7 @@ void adc_task(void*)
 
             dac_send(trace(trace_t));
 
-            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
+//            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
 
 //        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
 
@@ -254,6 +246,11 @@ void adc_task(void*)
 #endif //#if EXAMPLE_USE_ADC2
 }
 
+int adc_get() {
+    ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
+//    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+    return adc_raw;
+}
 
 /*---------------------------------------------------------------
         ADC Calibration
