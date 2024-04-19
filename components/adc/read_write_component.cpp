@@ -105,7 +105,9 @@ static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 
 // means after amplifier, memristor in
 void dac_send(float x) {
-    static const float tovolts = 10. * 4.7 * 3.3/DAC_RANGE;
+    #define kOhm
+
+    static const float tovolts = 10 kOhm /4.7 kOhm * 3.3/DAC_RANGE;
     static const float todac = 1/tovolts;
 
     uint16_t xi = x*todac + DAC_RANGE/2;
@@ -182,22 +184,22 @@ void adc_task(void*)
 
 //        // tests
         if(now >= count+2000) {
-            ESP_LOGI(TAG, "change lvl");
+//            ESP_LOGI(TAG, "change lvl");
             count = now/2000*2000;
             static uint32_t lvl=0;
             lvl^=1;
             gpio_set_level(TURN_ON, lvl);
 
-            if (do_calibration1_chan0) {
-                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+//            if (do_calibration1_chan0) {
+//                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
 //            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
-            }
+//            }
 
-            if(!protocol_on) continue;
-            proj_udp_send("test\n", 5);
+//            proj_udp_send("test\n", 5);
         }
 
         // main
+        if(protocol_on)
         for(int step = 0; step<(now-main_count); step++) {
             main_count = now;
 //            ESP_LOGI(TAG, "count: %d", (int)now);
@@ -210,8 +212,9 @@ void adc_task(void*)
             trace_t += DT;
             t1 += DT;
             t2 += DT;
-//            if(t>80) t=0;
+
             if(t1 > stimulus_T1) {
+//                ESP_LOGI(TAG,"stimulus");
                 t1 = 0;
                 stimulus1 = 0.1;
             }
@@ -246,10 +249,10 @@ void adc_task(void*)
 #endif //#if EXAMPLE_USE_ADC2
 }
 
-int adc_get() {
+float adc_get() {
     ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
-//    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
-    return adc_raw;
+    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+    return voltage/1000.;
 }
 
 /*---------------------------------------------------------------

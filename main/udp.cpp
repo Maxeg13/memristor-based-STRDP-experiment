@@ -115,16 +115,18 @@ void udp_task(void *pvParameters)
 
             if (stream_parse_word("help")) {
                 const char *help = "___________________________\n"
-                                   "  Memristive STDRP board\n"
+                                   "  Memristive STRDP board\n"
                                    "usage:\n"
                                    "    trace set <sigmoid delay (int ms)> <tau plus (float ms)>"
                                    "<F plus (float volts)> "
                                    "<F minus (float volts)>\n"
                                    ""
                                    "    protocol on\t\t\t\tstart stimuli\n"
-                                   "    <Enter>\t\t\t\tstop stimuli\n"
+                                   "    protocol off | <Enter>\t\t\t\tstop stimuli\n"
                                    "    protocol set <stimulus_T1 (int ms)> <stimulus_T2 (int ms)> "
                                    "<stimulus_delay2 (int ms)>\n"
+                                   "    adc get\t\t\t\tget current adc value in Volts (float)\n"
+                                   "    dac set <value in Volts (float)>\n"
                                    "___________________________\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if (stream_parse_word("trace set")) {
@@ -153,24 +155,25 @@ void udp_task(void *pvParameters)
                 sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("protocol on")) {
                 protocol_on = true;
+                std::string s = "protocol started\n# ";
+                sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("dac set")) {
                 float x = stream_parse_float();
                 dac_send(x);
-                std::string s = "\n# ";
+                std::string s = "# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("amp switch")) {
-                int state = stream_parse_int();
-                gpio_set_level(AMP_SWITCH, state);
-                std::string s = "\n# ";
+                bool state = stream_parse_int();
+                gpio_set_level(AMP_SWITCH, !state);
+                std::string s = "# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             }
             else if(stream_parse_word("adc get")) {
-                int x = adc_get();
-                char str[8];
+                float x = adc_get();
                 auto sf = std::to_string(x);
                 sf+="\n# ";
                 sendto(sockfd, sf.c_str(), strlen(sf.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream.left == 1) {
+            } else if(stream_parse_word("protocol off") || (stream.left == 1)) {
                 protocol_on = false;
                 char* str = "protocol off\n# ";
                 sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
@@ -178,13 +181,6 @@ void udp_task(void *pvParameters)
                 const char* help =  "failed to parse the incoming packet\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             }
-
-            // rec from ncat and parse
-//            while(1) {
-//                int x = adc_get();
-//                snprintf(str, sizeof(str), "%6d\n", x);
-//                sendto(sockfd, str, 10, 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-//            }
         }
         if (sockfd != -1) {
             ESP_LOGE(TAG, "Shutting down socket and restarting...");
