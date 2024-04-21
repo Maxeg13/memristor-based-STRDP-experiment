@@ -87,7 +87,7 @@ extern float F_p;
 extern float F_m;
 
 //protocol
-extern bool protocol_on;
+extern state_t proj_state;
 extern int stimulus_T1;
 extern int stimulus_T2;
 extern int stimulus_delay2;
@@ -199,7 +199,7 @@ void adc_task(void*)
         }
 
         // main
-        if(protocol_on)
+        if(proj_state == PROTOCOL)
         for(int step = 0; step<(now-main_count); step++) {
             main_count = now;
 //            ESP_LOGI(TAG, "count: %d", (int)now);

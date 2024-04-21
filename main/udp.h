@@ -13,6 +13,13 @@
 #include <lwip/netdb.h>
 
 #include "lcd2004.h"
+
+typedef enum
+{
+    IDLE = 0,
+    PROTOCOL,
+    VAC
+}state_t;
 //-------------------------------------------------------------
 void udp_task(void *pvParameters);
 void proj_udp_send(char* data, size_t size);
