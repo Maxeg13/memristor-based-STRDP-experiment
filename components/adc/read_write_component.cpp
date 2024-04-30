@@ -24,7 +24,7 @@ extern "C"{
 #include "../../main/udp.h"
 }
 
-#define TURN_ON     static_cast<gpio_num_t>(21)
+#define LED_STATE     static_cast<gpio_num_t>(21)
 #define SYNC        static_cast<gpio_num_t>(17)
 #define DT  0.5
 
@@ -63,7 +63,7 @@ const float Neuron::d = 8;
 ---------------------------------------------------------------*/
 //ADC1 Channels
 #if CONFIG_IDF_TARGET_ESP32
-#define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_4
+#define EXAMPLE_ADC1_CHAN4          ADC_CHANNEL_4
 #define EXAMPLE_ADC1_CHAN1          ADC_CHANNEL_5
 #else
 #define EXAMPLE_ADC1_CHAN0          ADC_CHANNEL_2
@@ -91,6 +91,15 @@ extern state_t proj_state;
 extern int stimulus_T1;
 extern int stimulus_T2;
 extern int stimulus_delay2;
+
+// VAC
+extern float vac_a;
+extern float vac_b;
+size_t vac_ctr = 0;
+float vac_step = 0.04;
+float vac_finish = 2 * 2 * 3.3 / vac_step;
+float vac_x = 0;
+bool vac_up = true;
 
 float trace(float t) {
     return F_p * exp(-t/tau_p) - F_m/(1 + exp(-(t - sigmoid_delay)/tau_p));
@@ -122,13 +131,13 @@ void dac_send(float x) {
 }
 
 void adc_init() {
-    gpio_reset_pin(TURN_ON);
-    gpio_set_direction(TURN_ON, GPIO_MODE_OUTPUT);
-    gpio_set_level(TURN_ON, 1);
+    gpio_reset_pin(LED_STATE);
+    gpio_set_direction(LED_STATE, GPIO_MODE_OUTPUT);
+    gpio_set_level(LED_STATE, 1);
 }
 
 adc_oneshot_unit_handle_t adc1_handle;
-adc_cali_handle_t adc1_cali_chan0_handle = NULL;
+adc_cali_handle_t adc1_cali_chan4_handle = NULL;
 
 void adc_task(void*)
 {
@@ -167,11 +176,10 @@ void adc_task(void*)
             .atten = EXAMPLE_ADC_ATTEN,
             .bitwidth = ADC_BITWIDTH_DEFAULT,
     };
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN0, &config));
-    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN1, &config));
+    ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN4, &config));
 
     //-------------ADC1 Calibration Init---------------//
-    bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN0, EXAMPLE_ADC_ATTEN, &adc1_cali_chan0_handle);
+    bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN4, EXAMPLE_ADC_ATTEN, &adc1_cali_chan4_handle);
 
     Neuron n1{};
     Neuron n2{};
@@ -188,49 +196,106 @@ void adc_task(void*)
             count = now/2000*2000;
             static uint32_t lvl=0;
             lvl^=1;
-            gpio_set_level(TURN_ON, lvl);
+            gpio_set_level(LED_STATE, lvl);
 
 //            if (do_calibration1_chan0) {
-//                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
-//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, voltage);
+//                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
+//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN4, voltage);
 //            }
 
 //            proj_udp_send("test\n", 5);
         }
 
         // main
-        if(proj_state == PROTOCOL)
-        for(int step = 0; step<(now-main_count); step++) {
+        for (int step = 0; step < (now - main_count); step++) {
             main_count = now;
-//            ESP_LOGI(TAG, "count: %d", (int)now);
-            static float trace_t = 0;
-            static float t1 = 0;
-            static float t2 = 0;
 
-            float stimulus1 = 0;
+            switch (proj_state) {
+                case PROTOCOL: {
+                    //            ESP_LOGI(TAG, "count: %d", (int)now);
+                    static float trace_t = 0;
+                    static float t1 = 0;
+                    static float t2 = 0;
 
-            trace_t += DT;
-            t1 += DT;
-            t2 += DT;
+                    float stimulus1 = 0;
 
-            if(t1 > stimulus_T1) {
-//                ESP_LOGI(TAG,"stimulus");
-                t1 = 0;
-                stimulus1 = 0.1;
+                    trace_t += DT;
+                    t1 += DT;
+                    t2 += DT;
+
+                    if (t1 > stimulus_T1) {
+                        //                ESP_LOGI(TAG,"stimulus");
+                        t1 = 0;
+                        stimulus1 = 0.1;
+                    }
+
+                    if (n1.eval(stimulus1)) {
+                        trace_t = 0;
+                    }
+
+                    n2.eval(0.0001);
+
+                    dac_send(trace(trace_t));
+
+                    //            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
+
+                    //        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN4, adc_raw);
+
+                }
+                    break;
+
+                case VAC: {
+                    static int presc = 0;
+                    presc++;
+                    presc%=3;
+
+                    if(presc == 0) {
+                        vac_ctr++;
+                        if (vac_up) {
+                            vac_x += vac_step;
+                            if (vac_x > vac_a) {
+                                vac_up = false;
+                            }
+                        } else {
+                            vac_x -= vac_step;
+                            if (vac_x < vac_b) {
+                                vac_up = true;
+                            }
+                        }
+
+                        dac_send(vac_x);
+                        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
+                        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
+
+                        static char str[200] = {0};
+                        static int send_ctr = 0;
+                        send_ctr++;
+
+                        snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.2f], ",
+                                 vac_x, voltage / 1000.);
+
+                        if (send_ctr > 6) {
+                            send_ctr = 0;
+                            snprintf(str+strlen(str), 2, "\n");
+                            proj_udp_send(str, strlen(str));
+                            str[0] = 0;
+                        }
+
+                        if (vac_ctr > vac_finish) {
+                            send_ctr = 0;
+                            vac_ctr = 0;
+                            vac_up = true;
+                            vac_x = 0;
+                            proj_state = IDLE;
+                            proj_udp_send("\n# ", 3);
+                        }
+                    }
+                }
+                    break;
+
+                case IDLE:
+                    break;
             }
-
-            if(n1.eval(stimulus1)) {
-                trace_t = 0;
-            }
-
-            n2.eval(0.0001);
-
-            dac_send(trace(trace_t));
-
-//            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
-
-//        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN0, adc_raw);
-
         }
 //        vTaskDelay(pdMS_TO_TICKS(20));
     }
@@ -238,7 +303,7 @@ void adc_task(void*)
     //Tear Down
     ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
     if (do_calibration1_chan0) {
-        example_adc_calibration_deinit(adc1_cali_chan0_handle);
+        example_adc_calibration_deinit(adc1_cali_chan4_handle);
     }
 
 #if EXAMPLE_USE_ADC2
@@ -250,8 +315,8 @@ void adc_task(void*)
 }
 
 float adc_get() {
-    ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN0, &adc_raw));
-    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan0_handle, adc_raw, &voltage));
+    ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
+    ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
     return voltage/1000.;
 }
 

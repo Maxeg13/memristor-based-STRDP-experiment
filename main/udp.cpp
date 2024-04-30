@@ -23,6 +23,8 @@ int stimulus_T2 = 80;
 int stimulus_delay2 = 40;
 
 // VAC
+extern float vac_step;
+extern float vac_finish;
 float vac_a = 0.5;
 float vac_b = -0.5;
 
@@ -123,7 +125,8 @@ void udp_task(void *pvParameters)
                                    "    dac set <value in Volts (float)>\n"
                                    "    adc get\t\t\t\t\t\t\t- get current adc value in Volts (float)\n"
                                    "    vac [A|B] [+= | -=] <value in Volts (float)> \t\t- increment/decrement VAC limits\n"
-                                   "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement\n# ";
+                                   "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement\n"
+                                   "    [amp | diode] switch [0 | 1] \t\t\t\t- implementation of bidirectional keys\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if (stream_parse_word("trace set")) {
                 sigmoid_delay = stream_parse_int();
@@ -180,20 +183,28 @@ void udp_task(void *pvParameters)
                     s+="\n# ";
                     sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
 
-                } else if("on") {
+                } else if(stream_parse_word("on")) {
                     proj_state = VAC;
                     std::string s = "VAC measurement started\n# ";
                     sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-                } else if("off") {
+                } else if(stream_parse_word("off")) {
                     proj_state = IDLE;
                     std::string s = "idle state\n# ";
                     sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
 
                 }
+
+                vac_finish = 2 * (vac_a - vac_b) / vac_step;
             }
             else if(stream_parse_word("amp switch")) {
                 bool state = stream_parse_int();
                 gpio_set_level(AMP_SWITCH, !state);
+                std::string s = "# ";
+                sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            }
+            else if(stream_parse_word("diode switch")) {
+                bool state = stream_parse_int();
+                gpio_set_level(DIODE_SWITCH, !state);
                 std::string s = "# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             }
