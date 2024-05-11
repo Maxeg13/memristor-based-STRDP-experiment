@@ -80,6 +80,10 @@ const float Neuron::d = 8;
 
 #define DAC_RANGE 0x7FF
 
+// common
+extern float adc_zero;
+extern float adc_to_current;
+
 // trace
 extern int sigmoid_delay;
 extern float tau_p;
@@ -88,8 +92,14 @@ extern float F_m;
 
 //protocol
 extern state_t proj_state;
-extern int stimulus_T1;
+extern float prot_ampl;
+extern bool prot_with_neurons;
+
+//protocol stimuli
 extern int stimulus_T2;
+extern float stimulusA1;
+extern int stimulus_T1;
+extern float stimulusA2;
 extern int stimulus_delay2;
 
 // VAC
@@ -186,14 +196,20 @@ void adc_task(void*)
 
     while (1) {
         static uint64_t main_count;
-        static uint64_t count;
-        uint64_t now;
-        ESP_ERROR_CHECK(gptimer_get_raw_count(gptimer, &now));
+        static uint64_t test_count;
+        uint64_t now_count;
+
+        ESP_ERROR_CHECK(gptimer_get_raw_count(gptimer, &now_count));
+        static bool once = false;
+        if(!once) {
+            once = true;
+            main_count = now_count;
+        }
 
 //        // tests
-        if(now >= count+2000) {
+        if(now_count >= test_count+2000) {
 //            ESP_LOGI(TAG, "change lvl");
-            count = now/2000*2000;
+            test_count = now_count/2000*2000;
             static uint32_t lvl=0;
             lvl^=1;
             gpio_set_level(LED_STATE, lvl);
@@ -202,40 +218,54 @@ void adc_task(void*)
 //                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
 //            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN4, voltage);
 //            }
-
-//            proj_udp_send("test\n", 5);
         }
 
         // main
-        for (int step = 0; step < (now - main_count); step++) {
-            main_count = now;
-
+        size_t count_diff = now_count - main_count;
+        for (int step = 0; step < count_diff; step++) {
+            main_count += DT;
             switch (proj_state) {
                 case PROTOCOL: {
-                    //            ESP_LOGI(TAG, "count: %d", (int)now);
+                    //            ESP_LOGI(TAG, "test_count: %d", (int)now_count);
                     static float trace_t = 0;
                     static float t1 = 0;
                     static float t2 = 0;
 
                     float stimulus1 = 0;
+                    float stimulus2 = 0;
 
                     trace_t += DT;
                     t1 += DT;
                     t2 += DT;
 
                     if (t1 > stimulus_T1) {
-                        //                ESP_LOGI(TAG,"stimulus");
                         t1 = 0;
-                        stimulus1 = 0.1;
+                        stimulus1 = stimulusA1;
                     }
 
                     if (n1.eval(stimulus1)) {
                         trace_t = 0;
                     }
 
-                    n2.eval(0.0001);
-
                     dac_send(trace(trace_t));
+///////////////////////////////////////
+
+                    float I = 0;
+                    if(trace_t == 0) {
+                        I = (adc_get() - adc_zero) * adc_to_current;
+                    }
+
+                    if (2 > stimulus_T2) {
+                        t2 = 0;
+                        stimulus2 = stimulusA2;
+                    }
+
+                    I += stimulus2;
+                    if(n2.eval(I)) {
+                        dac_send(trace(trace_t) * prot_ampl);
+                        esp_rom_delay_us(5);
+                        dac_send(trace(trace_t));
+                    }
 
                     //            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
 
@@ -286,6 +316,7 @@ void adc_task(void*)
                             vac_ctr = 0;
                             vac_up = true;
                             vac_x = 0;
+                            str[0] = 0;
                             proj_state = IDLE;
                             proj_udp_send("\n# ", 3);
                         }
@@ -297,14 +328,13 @@ void adc_task(void*)
                     break;
             }
         }
-//        vTaskDelay(pdMS_TO_TICKS(20));
     }
 
-    //Tear Down
-    ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
-    if (do_calibration1_chan0) {
-        example_adc_calibration_deinit(adc1_cali_chan4_handle);
-    }
+//        vTaskDelay(pdMS_TO_TICKS(20));
+//    ESP_ERROR_CHECK(adc_oneshot_del_unit(adc1_handle));
+//    if (do_calibration1_chan0) {
+//        example_adc_calibration_deinit(adc1_cali_chan4_handle);
+//    }
 
 #if EXAMPLE_USE_ADC2
     ESP_ERROR_CHECK(adc_oneshot_del_unit(adc2_handle));

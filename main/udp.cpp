@@ -9,6 +9,11 @@ extern "C" {
 //-------------------------------------------------------------
 static const char *TAG = "udp";
 //-------------------------------------------------------------
+//////////////////////////
+
+// common
+float adc_zero = 1;
+float adc_to_current = 1;
 
 // trace
 int sigmoid_delay = 50;
@@ -18,8 +23,14 @@ float F_m = 0.7;
 
 //protocol
 state_t proj_state = IDLE;
+float prot_ampl = 2;
+bool prot_with_neurons = true;
+
+//protocol stimuli
 int stimulus_T1 = 80;
+float stimulusA1 = 0.1;
 int stimulus_T2 = 80;
+float stimulusA2 = 0.1;
 int stimulus_delay2 = 40;
 
 // VAC
@@ -49,6 +60,15 @@ bool stream_trim() {
     return true;
 }
 
+bool stream_next() {
+    while(stream.left && (*stream.p != ' ') ) {
+        stream.p++;
+        stream.left--;
+    }
+    if(stream.left==0) return false;
+    return true;
+}
+
 bool stream_parse_word(char* word) {
     stream_trim();
     uint8_t offset = strlen(word);
@@ -64,19 +84,21 @@ bool stream_parse_word(char* word) {
 int stream_parse_int() {
     stream_trim();
     int x = atoi(stream.p);
+    stream_next();
     return x;
 }
 
 float stream_parse_float() {
     stream_trim();
     float x = atof(stream.p);
+    stream_next();
     return x;
 }
 
 void udp_task(void *pvParameters)
 {
-    static char buf[140] = {};
-    static char str[140];
+    static char buf[150] = {};
+    static char str[150];
 
     while(1)
     {
@@ -89,11 +111,11 @@ void udp_task(void *pvParameters)
         memset(&servaddr, 0, sizeof(servaddr));
         memset(&cliaddr, 0, sizeof(cliaddr));
         uint32_t client_addr_len = sizeof(cliaddr);
-        //���������� ���������� � �������
+
         servaddr.sin_family    = AF_INET; // IPv4
         servaddr.sin_addr.s_addr = INADDR_ANY;
         servaddr.sin_port = htons(CONFIG_SERVER_PORT);
-        //������ ����� � ������� �������
+
         if (bind(sockfd, (const struct sockaddr *)&servaddr,  sizeof(struct sockaddr_in)) < 0 )
         {
             ESP_LOGI(TAG,"socket not binded");
@@ -114,11 +136,11 @@ void udp_task(void *pvParameters)
                                    "  Memristive STRDP board 1.0\n"
                                    "usage:\n"
                                    "    trace set <sigmoid delay (int ms)> <tau plus (float ms)> "
-                                   "<F plus (float volts)> "
-                                   "<F minus (float volts)>\n"
-                                   ""
-                                   "    protocol set <stimulus_T1 (int ms)> <stimulus_T2 (int ms)> "
-                                   "<stimulus_delay2 (int ms)>\n"
+                                   "<F plus (float volts)>  <F minus (float volts)>\n"
+                                   "    stimuli set <stimulus_T1 (int ms)> <stimulus_A1 (float)> <stimulus_T2 (int ms)> "
+                                   "<stimulus_A2 (float)> <stimulus_delay2 (int ms)>\n"
+                                   "    protocol set <amplification (float)> <with neurons [1 | 0]>\n"
+                                   "    adc common set <adc zero (float Volts)> <adc_to_current (float Amps/Volts)>\n"
                                    "    [protocol [on | off]] | <Enter>\t\t\t\t- start/stop stimuli\n\n"
                                    ""
                                    "tests usage:\n"
@@ -126,7 +148,8 @@ void udp_task(void *pvParameters)
                                    "    adc get\t\t\t\t\t\t\t- get current adc value in Volts (float)\n"
                                    "    vac [A|B] [+= | -=] <value in Volts (float)> \t\t- increment/decrement VAC limits\n"
                                    "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement\n"
-                                   "    [amp | diode] switch [0 | 1] \t\t\t\t- implementation of bidirectional keys\n# ";
+                                   "    [amp | diode] switch [0 | 1] \t\t\t\t- implementation of bidirectional keys\n"
+                                   "    want a spider\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if (stream_parse_word("trace set")) {
                 sigmoid_delay = stream_parse_int();
@@ -141,21 +164,42 @@ void udp_task(void *pvParameters)
                                              "\tF minus\t\t%4.2f\n# ",
                          sigmoid_delay, tau_p, F_p, F_m);
                 sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("protocol set")) { 
+            } else if(stream_parse_word("stimuli set")) {
                 stimulus_T1 = stream_parse_int();
                 stimulus_T2 = stream_parse_int();
                 stimulus_delay2 = stream_parse_int();
 
                 snprintf(str, sizeof(str), "    settings done:\n"
                                              "\tstimulus T1\t%d\n"
+                                             "\tstimulus A1\t%4.2f\n"
                                              "\tstimulus T2\t%d\n"
+                                             "\tstimulus A2\t%4.2f\n"
                                              "\tstimulus 2 delay\t%d\n# ",
-                         stimulus_T1, stimulus_T2, stimulus_delay2);
+                         stimulus_T1, stimulusA1, stimulus_T2, stimulusA2, stimulus_delay2);
+                sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            } else if(stream_parse_word("protocol set")) {
+                prot_ampl = stream_parse_float();
+                prot_with_neurons = stream_parse_int();
+
+                snprintf(str, sizeof(str), "    settings done:\n"
+                                           "\tprot amp\t\t%4.2f\n"
+                                           "\tprot with neurons\t%d\n# ",
+                         prot_ampl, prot_with_neurons);
                 sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("protocol on")) {
                 proj_state = PROTOCOL;
                 std::string s = "protocol started\n# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            } else if(stream_parse_word("adc common set")) {
+                adc_zero = stream_parse_float();
+                adc_to_current = stream_parse_float();
+
+                snprintf(str, sizeof(str), "    settings done:\n"
+                                           "\tadc zero\t\t%4.2f\n"
+                                           "\tadc_to_current\t%4.2f\n# ",
+                         adc_zero, adc_to_current);
+                sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+
             } else if(stream_parse_word("dac set")) {
                 float x = stream_parse_float();
                 dac_send(x);
@@ -217,7 +261,25 @@ void udp_task(void *pvParameters)
                 proj_state = IDLE;
                 char* str = "idle state\n# ";
                 sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else {
+            } else if(stream_parse_word("want a spider")) {
+                char* str = "{\\__/}\n"
+                            "( ' . ')\n"
+                            "/ > * hot'ite pavuka?\n"
+                            "\n"
+                            "  {\\__/}\n"
+                            "( ' ^ ' )\n"
+                            "*<   \\ fig vam, a ne pavuk!\n"
+                            "\n"
+                            "{\\__/}\n"
+                            "(._.  )\n"
+                            " | < \\ stop, a ti gde?\n"
+                            "\n"
+                            "*\\__/}\n"
+                            "( ' 0')\n"
+                            "/>  |  pomogite!\n\n\n# ";
+                sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            }
+            else {
                 const char* help =  "failed to parse the incoming packet\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             }
