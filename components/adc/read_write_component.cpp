@@ -106,10 +106,15 @@ extern int stimulus_delay2;
 extern float vac_a;
 extern float vac_b;
 size_t vac_ctr = 0;
-float vac_step = 0.04;
-float vac_finish = 2 * 2 * 3.3 / vac_step;
+extern float vac_step;
+extern float vac_finish;
 float vac_x = 0;
 bool vac_up = true;
+
+//////////////////////////
+
+extern float stimulus_t1;
+extern float stimulus_t2;
 
 float trace(float t) {
     return F_p * exp(-t/tau_p) - F_m/(1 + exp(-(t - sigmoid_delay)/tau_p));
@@ -228,23 +233,25 @@ void adc_task(void*)
                 case PROTOCOL: {
                     //            ESP_LOGI(TAG, "test_count: %d", (int)now_count);
                     static float trace_t = 0;
-                    static float t1 = 0;
-                    static float t2 = 0;
 
                     float stimulus1 = 0;
                     float stimulus2 = 0;
 
                     trace_t += DT;
-                    t1 += DT;
-                    t2 += DT;
+                    stimulus_t1 += DT;
+                    stimulus_t2 += DT;
 
-                    if (t1 > stimulus_T1) {
-                        t1 = 0;
+                    if (stimulus_t1 > stimulus_T1) {
+                        stimulus_t1 = 0;
                         stimulus1 = stimulusA1;
                     }
 
-                    if (n1.eval(stimulus1)) {
-                        trace_t = 0;
+                    if(prot_with_neurons) {
+                        if (n1.eval(stimulus1)) {
+                            trace_t = 0;
+                        }
+                    } else {
+                        trace_t = stimulus_t1;
                     }
 
                     dac_send(trace(trace_t));
@@ -256,21 +263,25 @@ void adc_task(void*)
                     }
 
                     if (2 > stimulus_T2) {
-                        t2 = 0;
+                        stimulus_t2 = 0;
                         stimulus2 = stimulusA2;
                     }
 
                     I += stimulus2;
-                    if(n2.eval(I)) {
-                        dac_send(trace(trace_t) * prot_ampl);
-                        esp_rom_delay_us(5);
-                        dac_send(trace(trace_t));
+
+                    if(prot_with_neurons) {
+                        if (n2.eval(I)) {
+                            dac_send(trace(trace_t) * prot_ampl);
+                            esp_rom_delay_us(5);
+                            dac_send(trace(trace_t));
+                        }
+                    } else {
+                        if(!stimulus_t2) {
+                            dac_send(trace(trace_t) * prot_ampl);
+                            esp_rom_delay_us(5);
+                            dac_send(trace(trace_t));
+                        }
                     }
-
-                    //            ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
-
-                    //        ESP_LOGI(TAG, "ADC%d Channel[%d] Raw Data: %d", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN4, adc_raw);
-
                 }
                     break;
 

@@ -12,7 +12,7 @@ static const char *TAG = "udp";
 //////////////////////////
 
 // common
-float adc_zero = 1;
+float adc_zero = 1.215;
 float adc_to_current = 1;
 
 // trace
@@ -34,10 +34,14 @@ float stimulusA2 = 0.1;
 int stimulus_delay2 = 40;
 
 // VAC
-extern float vac_step;
-extern float vac_finish;
+float vac_step   = 0.04;
+float vac_finish = 2 * 2 * 3.3 / vac_step;
 float vac_a = 0.5;
 float vac_b = -0.5;
+
+///////
+float stimulus_t1 = 0;
+float stimulus_t2 = 0;
 
 struct sockaddr_in servaddr, cliaddr;
 int sockfd;
@@ -152,6 +156,7 @@ void udp_task(void *pvParameters)
                                    "    want a spider\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if (stream_parse_word("trace set")) {
+
                 sigmoid_delay = stream_parse_int();
                 tau_p = stream_parse_float();
                 F_p = stream_parse_float();
@@ -163,10 +168,12 @@ void udp_task(void *pvParameters)
                                              "\tF plus\t\t%4.2f\n"
                                              "\tF minus\t\t%4.2f\n# ",
                          sigmoid_delay, tau_p, F_p, F_m);
-                sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("stimuli set")) {
                 stimulus_T1 = stream_parse_int();
+                stimulusA1 = stream_parse_float();
                 stimulus_T2 = stream_parse_int();
+                stimulusA2 = stream_parse_float();
                 stimulus_delay2 = stream_parse_int();
 
                 snprintf(str, sizeof(str), "    settings done:\n"
@@ -176,31 +183,49 @@ void udp_task(void *pvParameters)
                                              "\tstimulus A2\t%4.2f\n"
                                              "\tstimulus 2 delay\t%d\n# ",
                          stimulus_T1, stimulusA1, stimulus_T2, stimulusA2, stimulus_delay2);
-                sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("protocol set")) {
-                prot_ampl = stream_parse_float();
-                prot_with_neurons = stream_parse_int();
+                sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            } else if(stream_parse_word("protocol")) {
+                if(stream_parse_word("set"))
+                {
+                    prot_ampl = stream_parse_float();
+                    prot_with_neurons = stream_parse_int();
 
-                snprintf(str, sizeof(str), "    settings done:\n"
-                                           "\tprot amp\t\t%4.2f\n"
-                                           "\tprot with neurons\t%d\n# ",
-                         prot_ampl, prot_with_neurons);
-                sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("protocol on")) {
-                proj_state = PROTOCOL;
-                std::string s = "protocol started\n# ";
-                sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("adc common set")) {
-                adc_zero = stream_parse_float();
-                adc_to_current = stream_parse_float();
+                    snprintf(str, sizeof(str), "    settings done:\n"
+                                               "\tprot amp\t\t%4.2f\n"
+                                               "\tprot with neurons\t%d\n# ",
+                             prot_ampl, prot_with_neurons);
+                    sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                } else if(stream_parse_word("on")) {
+                    stimulus_t1 = 0;
+                    stimulus_t2 = stimulus_delay2;
+                    proj_state = PROTOCOL;
 
-                snprintf(str, sizeof(str), "    settings done:\n"
-                                           "\tadc zero\t\t%4.2f\n"
-                                           "\tadc_to_current\t%4.2f\n# ",
-                         adc_zero, adc_to_current);
-                sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                    std::string s = "protocol started\n# ";
+                    sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                } else if(stream_parse_word("off")) {
+                    proj_state = IDLE;
+                    char* str = "idle state\n# ";
+                    sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                }
+            }
+            else if(stream_parse_word("adc common set")) {
+                if(stream_parse_word("common")&& stream_parse_word("set"))
+                {
+                    adc_zero = stream_parse_float();
+                    adc_to_current = stream_parse_float();
 
-            } else if(stream_parse_word("dac set")) {
+                    snprintf(str, sizeof(str), "    settings done:\n"
+                                               "\tadc zero\t\t%4.2f\n"
+                                               "\tadc_to_current\t%4.2f\n# ",
+                             adc_zero, adc_to_current);
+                    sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                } else if(stream_parse_word("get")) {
+                    float x = adc_get();
+                    auto sf = std::to_string(x);
+                    sf+="\n# ";
+                    sendto(sockfd, sf.c_str(), strlen(sf.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                }
+            } else if(stream_parse_word("dac") && stream_parse_word("set")) {
                 float x = stream_parse_float();
                 dac_send(x);
                 std::string s = "# ";
@@ -245,19 +270,12 @@ void udp_task(void *pvParameters)
                 gpio_set_level(AMP_SWITCH, !state);
                 std::string s = "# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            }
-            else if(stream_parse_word("diode switch")) {
+            } else if(stream_parse_word("diode switch")) {
                 bool state = stream_parse_int();
                 gpio_set_level(DIODE_SWITCH, !state);
                 std::string s = "# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            }
-            else if(stream_parse_word("adc get")) {
-                float x = adc_get();
-                auto sf = std::to_string(x);
-                sf+="\n# ";
-                sendto(sockfd, sf.c_str(), strlen(sf.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("protocol off") || (stream.left == 1)) {
+            } else if(stream.left == 1) {
                 proj_state = IDLE;
                 char* str = "idle state\n# ";
                 sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
