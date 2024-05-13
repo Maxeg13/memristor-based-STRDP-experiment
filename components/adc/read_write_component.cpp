@@ -94,6 +94,7 @@ extern float F_m;
 extern state_t proj_state;
 extern float prot_ampl;
 extern bool prot_with_neurons;
+extern int prot_adc_log_presc;
 
 //protocol stimuli
 extern int stimulus_T2;
@@ -115,6 +116,8 @@ bool vac_up = true;
 
 extern float stimulus_t1;
 extern float stimulus_t2;
+
+extern bool protocol_once;
 
 float trace(float t) {
     return F_p * exp(-t/tau_p) - F_m/(1 + exp(-(t - sigmoid_delay)/tau_p));
@@ -153,6 +156,12 @@ void adc_init() {
 
 adc_oneshot_unit_handle_t adc1_handle;
 adc_cali_handle_t adc1_cali_chan4_handle = NULL;
+
+void dac_init() {
+    example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN4, EXAMPLE_ADC_ATTEN, &adc1_cali_chan4_handle);
+}
+
+extern bool wifi_started;
 
 void adc_task(void*)
 {
@@ -193,21 +202,22 @@ void adc_task(void*)
     };
     ESP_ERROR_CHECK(adc_oneshot_config_channel(adc1_handle, EXAMPLE_ADC1_CHAN4, &config));
 
-    //-------------ADC1 Calibration Init---------------//
     bool do_calibration1_chan0 = example_adc_calibration_init(ADC_UNIT_1, EXAMPLE_ADC1_CHAN4, EXAMPLE_ADC_ATTEN, &adc1_cali_chan4_handle);
+    dac_send(0);
 
     Neuron n1{};
     Neuron n2{};
 
+    while(!wifi_started);
+
     while (1) {
         static uint64_t main_count;
         static uint64_t test_count;
-        uint64_t now_count;
+        static uint64_t now_count;
 
         ESP_ERROR_CHECK(gptimer_get_raw_count(gptimer, &now_count));
-        static bool once = false;
-        if(!once) {
-            once = true;
+        if(!protocol_once) {
+            protocol_once = true;
             main_count = now_count;
         }
 
@@ -258,9 +268,7 @@ void adc_task(void*)
 ///////////////////////////////////////
 
                     float I = 0;
-                    if(trace_t == 0) {
-                        I = (adc_get() - adc_zero) * adc_to_current;
-                    }
+                    I = (adc_get() - adc_zero) * adc_to_current;
 
                     if (2 > stimulus_T2) {
                         stimulus_t2 = 0;
@@ -308,12 +316,12 @@ void adc_task(void*)
                         ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
                         ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
 
-                        static char str[200] = {0};
+                        static char str[230] = {0};
                         static int send_ctr = 0;
                         send_ctr++;
 
                         snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.2f], ",
-                                 vac_x, voltage / 1000.);
+                                 vac_x, voltage / 1000. - adc_zero);
 
                         if (send_ctr > 6) {
                             send_ctr = 0;

@@ -8,5 +8,6 @@ void adc_task(void*);
 float adc_get();
 void dac_send(float x);
 void adc_init();
+void dac_init();
 
 #endif //WIFI_STA_UDP_SERVER_ADC_H

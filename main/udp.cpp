@@ -25,6 +25,7 @@ float F_m = 0.7;
 state_t proj_state = IDLE;
 float prot_ampl = 2;
 bool prot_with_neurons = true;
+int prot_adc_log_presc = 1;
 
 //protocol stimuli
 int stimulus_T1 = 80;
@@ -42,6 +43,8 @@ float vac_b = -0.5;
 ///////
 float stimulus_t1 = 0;
 float stimulus_t2 = 0;
+
+bool protocol_once = false;
 
 struct sockaddr_in servaddr, cliaddr;
 int sockfd;
@@ -139,11 +142,11 @@ void udp_task(void *pvParameters)
                 const char *help = ""
                                    "  Memristive STRDP board 1.0\n"
                                    "usage:\n"
-                                   "    trace set <sigmoid delay (int ms)> <tau plus (float ms)> "
+                                   "    trace set <sigmoid delay (uint ms)> <tau plus (float ms)> "
                                    "<F plus (float volts)>  <F minus (float volts)>\n"
-                                   "    stimuli set <stimulus_T1 (int ms)> <stimulus_A1 (float)> <stimulus_T2 (int ms)> "
-                                   "<stimulus_A2 (float)> <stimulus_delay2 (int ms)>\n"
-                                   "    protocol set <amplification (float)> <with neurons [1 | 0]>\n"
+                                   "    stimuli set <stimulus_T1 (uint ms)> <stimulus_A1 (float)> <stimulus_T2 (uint ms)> "
+                                   "<stimulus_A2 (float)> <stimulus_delay2 (uint ms)>\n"
+                                   "    protocol set <amplification (float)> <with neurons [1 | 0]> <adc log prescaller (uint)>\n"
                                    "    adc common set <adc zero (float Volts)> <adc_to_current (float Amps/Volts)>\n"
                                    "    [protocol [on | off]] | <Enter>\t\t\t\t- start/stop stimuli\n\n"
                                    ""
@@ -189,15 +192,18 @@ void udp_task(void *pvParameters)
                 {
                     prot_ampl = stream_parse_float();
                     prot_with_neurons = stream_parse_int();
+                    prot_adc_log_presc = stream_parse_int();
 
                     snprintf(str, sizeof(str), "    settings done:\n"
                                                "\tprot amp\t\t%4.2f\n"
-                                               "\tprot with neurons\t%d\n# ",
-                             prot_ampl, prot_with_neurons);
+                                               "\tprot with neurons\t%d\n"
+                                               "\tprot adc log prescaller\t%d\n# ",
+                             prot_ampl, prot_with_neurons, prot_adc_log_presc);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 } else if(stream_parse_word("on")) {
                     stimulus_t1 = 0;
                     stimulus_t2 = stimulus_delay2;
+                    protocol_once = true;
                     proj_state = PROTOCOL;
 
                     std::string s = "protocol started\n# ";
@@ -280,12 +286,13 @@ void udp_task(void *pvParameters)
                 char* str = "idle state\n# ";
                 sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("want a spider")) {
-                char* str = "{\\__/}\n"
+                char* str = "\n"
+                            "{\\__/}\n"
                             "( ' . ')\n"
-                            "/ > * hot'ite pavuka?\n"
+                            "/ > * hotite pavuka?\n"
                             "\n"
-                            "  {\\__/}\n"
-                            "( ' ^ ' )\n"
+                            " {\\__/}\n"
+                            "( ' ^ ')\n"
                             "*<   \\ fig vam, a ne pavuk!\n"
                             "\n"
                             "{\\__/}\n"
@@ -294,7 +301,7 @@ void udp_task(void *pvParameters)
                             "\n"
                             "*\\__/}\n"
                             "( ' 0')\n"
-                            "/>  |  pomogite!\n\n\n# ";
+                            "/>  |  pomogite!\n\n# ";
                 sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             }
             else {
