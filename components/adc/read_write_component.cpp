@@ -253,7 +253,7 @@ void adc_task(void*)
                     stimulus_t1 += DT;
                     stimulus_t2 += DT;
 
-                    if (stimulus_t1 > stimulus_T1) {
+                    if (stimulus_t1 >= stimulus_T1) {
                         stimulus_t1 = 0;
                         stimulus1 = stimulusA1;
                     }
@@ -283,7 +283,7 @@ void adc_task(void*)
                         }
                     }
 
-                    if (2 > stimulus_T2) {
+                    if (stimulus_t2 >= stimulus_T2) {
                         stimulus_t2 = 0;
                         stimulus2 = stimulusA2;
                     }
