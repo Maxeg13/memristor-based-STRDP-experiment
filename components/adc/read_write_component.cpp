@@ -276,8 +276,8 @@ void adc_task(void*)
                         ctr++;
                         if(ctr >= prot_adc_log_presc) {
                             ctr = 0;
-                            char str[30];
-                            snprintf(str, sizeof(str), "%9d ms, conductance %4.2f\n",
+                            static char str[45];
+                            snprintf(str, sizeof(str), "%9d ms n1 spike, cond %4.2f\n",
                                      (uint)time, I/trace_val);
                             proj_udp_send(str, strlen(str));
                         }

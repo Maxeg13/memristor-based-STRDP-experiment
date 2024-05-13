@@ -12,7 +12,7 @@ static const char *TAG = "udp";
 //////////////////////////
 
 // common
-float adc_zero = 1.215;
+float adc_zero = 1.9;
 float adc_to_current = 1;
 
 // trace
@@ -214,7 +214,7 @@ void udp_task(void *pvParameters)
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
             }
-            else if(stream_parse_word("adc common set")) {
+            else if(stream_parse_word("adc")) {
                 if(stream_parse_word("common")&& stream_parse_word("set"))
                 {
                     adc_zero = stream_parse_float();
