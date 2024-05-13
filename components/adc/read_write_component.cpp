@@ -211,6 +211,7 @@ void adc_task(void*)
     while(!wifi_started);
 
     while (1) {
+        static float time = 0;
         static uint64_t main_count;
         static uint64_t test_count;
         static uint64_t now_count;
@@ -238,10 +239,11 @@ void adc_task(void*)
         // main
         size_t count_diff = now_count - main_count;
         for (int step = 0; step < count_diff; step++) {
-            main_count += DT;
+            main_count += 1;
             switch (proj_state) {
                 case PROTOCOL: {
-                    //            ESP_LOGI(TAG, "test_count: %d", (int)now_count);
+                    time += DT;
+                    float trace_val = 0;
                     static float trace_t = 0;
 
                     float stimulus1 = 0;
@@ -264,11 +266,22 @@ void adc_task(void*)
                         trace_t = stimulus_t1;
                     }
 
-                    dac_send(trace(trace_t));
+                    trace_val = trace(trace_t);
+                    dac_send(trace_val);
 ///////////////////////////////////////
 
-                    float I = 0;
-                    I = (adc_get() - adc_zero) * adc_to_current;
+                    float I = (adc_get() - adc_zero) * adc_to_current;
+                    if(trace_t == 0) {
+                        static int ctr = 0;
+                        ctr++;
+                        if(ctr >= prot_adc_log_presc) {
+                            ctr = 0;
+                            char str[30];
+                            snprintf(str, sizeof(str), "%9d ms, conductance %4.2f\n",
+                                     (uint)time, I/trace_val);
+                            proj_udp_send(str, strlen(str));
+                        }
+                    }
 
                     if (2 > stimulus_T2) {
                         stimulus_t2 = 0;
@@ -279,15 +292,15 @@ void adc_task(void*)
 
                     if(prot_with_neurons) {
                         if (n2.eval(I)) {
-                            dac_send(trace(trace_t) * prot_ampl);
+                            dac_send(trace_val * prot_ampl);
                             esp_rom_delay_us(5);
-                            dac_send(trace(trace_t));
+                            dac_send(trace_val);
                         }
                     } else {
                         if(!stimulus_t2) {
-                            dac_send(trace(trace_t) * prot_ampl);
+                            dac_send(trace_val * prot_ampl);
                             esp_rom_delay_us(5);
-                            dac_send(trace(trace_t));
+                            dac_send(trace_val);
                         }
                     }
                 }
