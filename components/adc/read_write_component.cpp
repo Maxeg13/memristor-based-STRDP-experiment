@@ -1,9 +1,3 @@
-/*
- * SPDX-FileCopyrightText: 2022-2023 Espressif Systems (Shanghai) CO LTD
- *
- * SPDX-License-Identifier: Apache-2.0
- */
-
 extern "C"{
 #include <stdio.h>
 #include <stdlib.h>
@@ -133,13 +127,22 @@ static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 // means after amplifier, memristor in
 void dac_send(float x) {
     #define kOhm
+//    #define ADJUSTMENT
 
-    static const float tovolts = 10 kOhm /4.7 kOhm * 3.3/DAC_RANGE;
+    static const float tovolts = 10 kOhm /4.7 kOhm * 3. /DAC_RANGE;
     static const float todac = 1/tovolts;
 
-    uint16_t xi = x*todac + DAC_RANGE/2;
+    int16_t xi = x*todac + DAC_RANGE/2;
 
     static uint8_t mas[2];
+
+    if(xi < 0)
+    {
+        xi = 0;
+    } else if(xi >= DAC_RANGE) {
+        xi = DAC_RANGE;
+    }
+
     mas[0] = xi>>8;
     mas[1] = xi;
 
@@ -244,12 +247,12 @@ void adc_task(void*)
                 case PROTOCOL: {
                     time += DT;
                     float trace_val = 0;
-                    static float trace_t = 0;
+                    static float trace_time = 0;
 
                     float stimulus1 = 0;
                     float stimulus2 = 0;
 
-                    trace_t += DT;
+                    trace_time += DT;
                     stimulus_t1 += DT;
                     stimulus_t2 += DT;
 
@@ -260,25 +263,25 @@ void adc_task(void*)
 
                     if(prot_with_neurons) {
                         if (n1.eval(stimulus1)) {
-                            trace_t = 0;
+                            trace_time = 0;
                         }
                     } else {
-                        trace_t = stimulus_t1;
+                        trace_time = stimulus_t1;
                     }
 
-                    trace_val = trace(trace_t);
+                    trace_val = trace(trace_time);
                     dac_send(trace_val);
 ///////////////////////////////////////
 
                     float I = (adc_get() - adc_zero) * adc_to_current;
-                    if(trace_t == 0) {
+                    if(trace_time == 0) {
                         static int ctr = 0;
                         ctr++;
                         if(ctr >= prot_adc_log_presc) {
                             ctr = 0;
-                            static char str[45];
-                            snprintf(str, sizeof(str), "%9d ms n1 spike, cond %4.2f\n",
-                                     (uint)time, I/trace_val);
+                            static char str[64];
+                            snprintf(str, sizeof(str), "%9d ms n1 spike, %4.2f volts, %4.2f Amps, cond: %4.2f mS\n",
+                                     (uint)time, trace_val, I, I/trace_val*1000);
                             proj_udp_send(str, strlen(str));
                         }
                     }
@@ -297,7 +300,7 @@ void adc_task(void*)
                             dac_send(trace_val);
                         }
                     } else {
-                        if(!stimulus_t2) {
+                        if(stimulus_t2 == 0) {
                             dac_send(trace_val * prot_ampl);
                             esp_rom_delay_us(5);
                             dac_send(trace_val);

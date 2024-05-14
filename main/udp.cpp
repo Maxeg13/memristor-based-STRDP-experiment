@@ -13,7 +13,7 @@ static const char *TAG = "udp";
 
 // common
 float adc_zero = 1.9;
-float adc_to_current = 1;
+float adc_to_current = 0.001/2.2;
 
 // trace
 int sigmoid_delay = 50;
@@ -152,11 +152,12 @@ void udp_task(void *pvParameters)
                                    ""
                                    "tests usage:\n"
                                    "    dac set <value in Volts (float)>\n"
-                                   "    adc get\t\t\t\t\t\t\t- get current adc value in Volts (float)\n"
+                                   "    current get <ref voltage in Volts (float)>\t\t\t- get current in Amps\n"
+                                   "    adc get\t\t\t\t\t\t\t- get adc value in Volts (float)\n"
                                    "    vac [A|B] [+= | -=] <value in Volts (float)> \t\t- increment/decrement VAC limits\n"
                                    "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement\n"
                                    "    [amp | diode] switch [0 | 1] \t\t\t\t- implementation of bidirectional keys\n"
-                                   "    want a spider\n# ";
+                                   "    want a spider\t\t\t\t\t\t- get spider\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if (stream_parse_word("trace set")) {
 
@@ -230,6 +231,15 @@ void udp_task(void *pvParameters)
                     auto sf = std::to_string(x);
                     sf+="\n# ";
                     sendto(sockfd, sf.c_str(), strlen(sf.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                }
+            } else if(stream_parse_word("current")) {
+                if(stream_parse_word("get")) {
+                    float ref = stream_parse_float();
+                    dac_send(ref);
+                    float adc = adc_get();
+                    auto cur = std::to_string(adc * adc_to_current);
+                    cur+="\n# ";
+                    sendto(sockfd, cur.c_str(), strlen(cur.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
             } else if(stream_parse_word("dac") && stream_parse_word("set")) {
                 float x = stream_parse_float();
