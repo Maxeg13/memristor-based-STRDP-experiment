@@ -74,6 +74,8 @@ const float Neuron::d = 8;
 
 #define DAC_RANGE 0x7FF
 
+uint64_t led_mode_count;
+
 // common
 extern float adc_zero;
 extern float adc_to_current;
@@ -166,7 +168,7 @@ void dac_init() {
 
 extern bool wifi_started;
 
-void adc_task(void*)
+void read_write_task(void*)
 {
     gptimer_handle_t gptimer = NULL;
     gptimer_config_t timer_config = {
@@ -213,6 +215,8 @@ void adc_task(void*)
 
     while(!wifi_started);
 
+    gpio_set_level(LED_STATE, 0);
+
     while (1) {
         static float time = 0;
         static uint64_t main_count;
@@ -223,20 +227,24 @@ void adc_task(void*)
         if(!protocol_once) {
             protocol_once = true;
             main_count = now_count;
+            test_count = now_count;
+            led_mode_count = now_count;
         }
 
-//        // tests
-        if(now_count >= test_count+2000) {
-//            ESP_LOGI(TAG, "change lvl");
-            test_count = now_count/2000*2000;
-            static uint32_t lvl=0;
-            lvl^=1;
-            gpio_set_level(LED_STATE, lvl);
+        // led, tests
+        uint64_t ticks = 125;
+        bool fast_blink = now_count < (led_mode_count + (125*7));
+        if( !fast_blink ) ticks = 2000;
 
-//            if (do_calibration1_chan0) {
-//                ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
-//            ESP_LOGI(TAG, "ADC%d Channel[%d] Cali Voltage: %d mV", ADC_UNIT_1 + 1, EXAMPLE_ADC1_CHAN4, voltage);
-//            }
+        if( fast_blink ||
+            (proj_state == IDLE)) {
+            if(now_count > (test_count + ticks)) {
+//            ESP_LOGI(TAG, "change lvl, led cnt %llu, now cnt %llu", led_mode_count, now_count);
+                test_count = now_count;
+                static uint32_t lvl=0;
+                lvl^=1;
+                gpio_set_level(LED_STATE, lvl);
+            }
         }
 
         // main

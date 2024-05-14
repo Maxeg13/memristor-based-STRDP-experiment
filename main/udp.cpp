@@ -134,9 +134,11 @@ void udp_task(void *pvParameters)
         while(1) {
             size_t rec_size = recvfrom(sockfd, buf, sizeof(buf), 0, (struct sockaddr *) &cliaddr,
                                        &client_addr_len);
-
+            ESP_LOGI(TAG, "client port %d", ntohs(cliaddr.sin_port));
             stream.p = buf;
             stream.left = rec_size;
+
+            protocol_once = false;
 
             if (stream_parse_word("help")) {
                 const char *help = ""
