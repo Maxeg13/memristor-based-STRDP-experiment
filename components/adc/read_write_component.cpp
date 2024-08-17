@@ -185,12 +185,14 @@ void read_write_task(void*)
 
     spi_init();
 
+#define TO_SWITCH 0
+
     gpio_reset_pin(DIODE_SWITCH);
     gpio_set_direction(DIODE_SWITCH, GPIO_MODE_OUTPUT);
-    gpio_set_level(DIODE_SWITCH, 1);
+    gpio_set_level(DIODE_SWITCH, TO_SWITCH);
     gpio_reset_pin(AMP_SWITCH);
     gpio_set_direction(AMP_SWITCH, GPIO_MODE_OUTPUT);
-    gpio_set_level(AMP_SWITCH, 1);
+    gpio_set_level(AMP_SWITCH, !TO_SWITCH);
     gpio_reset_pin(SYNC);
     gpio_set_direction(SYNC, GPIO_MODE_OUTPUT);
 
@@ -299,6 +301,8 @@ void read_write_task(void*)
                         stimulus2 = stimulusA2;
                     }
 
+                    // TODO:  log the I before *k
+//                    I *= k___
                     I += stimulus2;
 
                     if(prot_with_neurons) {
@@ -337,15 +341,15 @@ void read_write_task(void*)
                         }
 
                         dac_send(vac_x);
-                        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
-                        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
+//                        ESP_ERROR_CHECK(adc_oneshot_read(adc1_handle, EXAMPLE_ADC1_CHAN4, &adc_raw));
+//                        ESP_ERROR_CHECK(adc_cali_raw_to_voltage(adc1_cali_chan4_handle, adc_raw, &voltage));
 
                         static char str[230] = {0};
                         static int send_ctr = 0;
                         send_ctr++;
 
                         snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.2f], ",
-                                 vac_x, voltage / 1000. - adc_zero);
+                                 vac_x, (adc_get() - adc_zero) * adc_to_current);
 
                         if (send_ctr > 6) {
                             send_ctr = 0;
@@ -354,15 +358,16 @@ void read_write_task(void*)
                             str[0] = 0;
                         }
 
-                        if (vac_ctr > vac_finish) {
-                            send_ctr = 0;
-                            vac_ctr = 0;
-                            vac_up = true;
-                            vac_x = 0;
-                            str[0] = 0;
-                            proj_state = IDLE;
-                            proj_udp_send("\n# ", 3);
-                        }
+                        // TODO: uncomment
+//                        if (vac_ctr > vac_finish) {
+//                            send_ctr = 0;
+//                            vac_ctr = 0;
+//                            vac_up = true;
+//                            vac_x = 0;
+//                            str[0] = 0;
+//                            proj_state = IDLE;
+//                            proj_udp_send("\n# ", 3);
+//                        }
                     }
                 }
                     break;

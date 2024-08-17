@@ -29,6 +29,7 @@ void app_main(void)
 
     ESP_LOGI(TAG, "wifi_init_sta: %d", ret);
     xTaskCreate(udp_task, "udp_task", 4096, NULL, 5, NULL);
+    xTaskCreate(udp_send_task, "udp_send task", 4096, NULL, 5, NULL);
     xTaskCreate(read_write_task, "evaluation task", 4096, NULL, 6, NULL);
 }
 

@@ -4,6 +4,7 @@ extern "C" {
 #include "string.h"
 }
 
+#include "freertos/queue.h"
 #include <string>
 
 //-------------------------------------------------------------
@@ -49,8 +50,10 @@ bool protocol_once = false;
 struct sockaddr_in servaddr, cliaddr;
 int sockfd;
 
+QueueHandle_t queue1;
+
 void proj_udp_send(char* data, size_t size) {
-    sendto(sockfd, data, size, 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+    xQueueSend(queue1, data , (TickType_t)0 );
 }
 
 struct {
@@ -100,6 +103,18 @@ float stream_parse_float() {
     float x = atof(stream.p);
     stream_next();
     return x;
+}
+
+void udp_send_task(void *pvParameters) {
+    queue1 = xQueueCreate(2, 150);
+
+    uint8_t data[150];
+
+    while(true) {
+        if(xQueueReceive(queue1, &data , (TickType_t)10)) {
+            sendto(sockfd, data, strlen((char*)data), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+        }
+    }
 }
 
 void udp_task(void *pvParameters)
@@ -156,7 +171,7 @@ void udp_task(void *pvParameters)
                                    "    dac set <value in Volts (float)>\n"
                                    "    current get <ref voltage in Volts (float)>\t\t\t- get current in Amps\n"
                                    "    adc get\t\t\t\t\t\t\t- get adc value in Volts (float)\n"
-                                   "    vac [A|B] [+= | -=] <value in Volts (float)> \t\t- increment/decrement VAC limits\n"
+                                   "    vac [A|B] [= | += | -=] <value in Volts (float)> \t\t- change VAC limits\n"
                                    "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement\n"
                                    "    [amp | diode] switch [0 | 1] \t\t\t\t- implementation of bidirectional keys\n"
                                    "    want a spider\t\t\t\t\t\t- get spider\n# ";
@@ -249,21 +264,25 @@ void udp_task(void *pvParameters)
                 std::string s = "# ";
                 sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
             } else if(stream_parse_word("vac")) {
-                if(stream_parse_word("A")) {
+                if(stream_parse_word("A")||stream_parse_word("a")) {
                     if (stream_parse_word("+=")) {
                         vac_a += stream_parse_float();
                     } else if (stream_parse_word("-=")) {
                         vac_a -= stream_parse_float();
+                    } else if(stream_parse_word("=")) {
+                        vac_a = stream_parse_float();
                     }
                     std::string s = "vac_a = ";
                     s += std::to_string(vac_a);
                     s += "\n# ";
                     sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-                } else if(stream_parse_word("B")) {
+                } else if(stream_parse_word("B")||stream_parse_word("b")) {
                     if(stream_parse_word("+=")) {
                         vac_b += stream_parse_float();
                     } else if(stream_parse_word("-=")) {
                         vac_b -= stream_parse_float();
+                    } else if(stream_parse_word("=")) {
+                        vac_b = stream_parse_float();
                     }
                     std::string s = "vac_b = ";
                     s+=std::to_string(vac_b);

@@ -22,6 +22,7 @@ typedef enum
 }state_t;
 //-------------------------------------------------------------
 void udp_task(void *pvParameters);
+void udp_send_task(void *pvParameters);
 void proj_udp_send(char* data, size_t size);
 //-------------------------------------------------------------
 #endif /* MAIN_UDP_H_ */
