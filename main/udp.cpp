@@ -13,8 +13,8 @@ static const char *TAG = "udp";
 //////////////////////////
 
 // common
-float adc_zero = 1.9;
-float adc_to_current = 0.001/2.2;
+float adc_zero = 1.73;
+float adc_to_current = 2.2/2.58;
 
 // trace
 int sigmoid_delay = 50;
@@ -22,11 +22,14 @@ float tau_p = 1/0.4;
 float F_p = 0.7;
 float F_m = 0.7;
 
+// neurons
+float input_I_coeff = 1;
+
 //protocol
 state_t proj_state = IDLE;
 float prot_ampl = 2;
 bool prot_with_neurons = true;
-int prot_adc_log_presc = 1;
+int prot_log_presc = 1;
 
 //protocol stimuli
 int stimulus_T1 = 80;
@@ -159,6 +162,7 @@ void udp_task(void *pvParameters)
                 const char *help = ""
                                    "  Memristive STRDP board 1.0\n"
                                    "usage:\n"
+                                   "    neurons set <input I coeff>\n"
                                    "    trace set <sigmoid delay (uint ms)> <tau plus (float ms)> "
                                    "<F plus (float volts)>  <F minus (float volts)>\n"
                                    "    stimuli set <stimulus_T1 (uint ms)> <stimulus_A1 (float)> <stimulus_T2 (uint ms)> "
@@ -172,32 +176,45 @@ void udp_task(void *pvParameters)
                                    "    current get <ref voltage in Volts (float)>\t\t\t- get current in Amps\n"
                                    "    adc get\t\t\t\t\t\t\t- get adc value in Volts (float)\n"
                                    "    vac [A|B] [= | += | -=] <value in Volts (float)> \t\t- change VAC limits\n"
-                                   "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement\n"
+                                   "    vac [on | off]\t\t\t\t\t\t- activate/deactivate VAC measurement (volts, mAmps)\n"
                                    "    [amp | diode] switch [0 | 1] \t\t\t\t- implementation of bidirectional keys\n"
                                    "    want a spider\t\t\t\t\t\t- get spider\n# ";
                 sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if (stream_parse_word("trace set")) {
+            } else if(stream_parse_word("neurons")) {
+                if(stream_parse_word("set")) {
+                    input_I_coeff = stream_parse_float();
+                }
 
-                sigmoid_delay = stream_parse_int();
-                tau_p = stream_parse_float();
-                F_p = stream_parse_float();
-                F_m = stream_parse_float();
+                snprintf(str, sizeof(str), "    settings:\n"
+                                           "\tinput I coeff\t%4.5f\n# ",
+                                                    input_I_coeff);
+                sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            }
+            else if(stream_parse_word("trace")) {
+                if(stream_parse_word("set")) {
+                    sigmoid_delay = stream_parse_int();
+                    tau_p = stream_parse_float();
+                    F_p = stream_parse_float();
+                    F_m = stream_parse_float();
+                }
 
-                snprintf(str, sizeof(str), "    settings done:\n"
+                snprintf(str, sizeof(str), "    settings:\n"
                                              "\tsigmoid delay\t%d\n"
                                              "\ttau plus\t%4.2f\n"
                                              "\tF plus\t\t%4.2f\n"
                                              "\tF minus\t\t%4.2f\n# ",
                          sigmoid_delay, tau_p, F_p, F_m);
                 sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-            } else if(stream_parse_word("stimuli set")) {
-                stimulus_T1 = stream_parse_int();
-                stimulusA1 = stream_parse_float();
-                stimulus_T2 = stream_parse_int();
-                stimulusA2 = stream_parse_float();
-                stimulus_delay2 = stream_parse_int();
+            } else if(stream_parse_word("stimuli")) {
+                if(stream_parse_word("set")) {
+                    stimulus_T1 = stream_parse_int();
+                    stimulusA1 = stream_parse_float();
+                    stimulus_T2 = stream_parse_int();
+                    stimulusA2 = stream_parse_float();
+                    stimulus_delay2 = stream_parse_int();
+                }
 
-                snprintf(str, sizeof(str), "    settings done:\n"
+                snprintf(str, sizeof(str), "    settings:\n"
                                              "\tstimulus T1\t%d\n"
                                              "\tstimulus A1\t%4.2f\n"
                                              "\tstimulus T2\t%d\n"
@@ -210,13 +227,13 @@ void udp_task(void *pvParameters)
                 {
                     prot_ampl = stream_parse_float();
                     prot_with_neurons = stream_parse_int();
-                    prot_adc_log_presc = stream_parse_int();
+                    prot_log_presc = stream_parse_int();
 
-                    snprintf(str, sizeof(str), "    settings done:\n"
+                    snprintf(str, sizeof(str), "    settings:\n"
                                                "\tprot amp\t\t%4.2f\n"
                                                "\tprot with neurons\t%d\n"
                                                "\tprot adc log prescaller\t%d\n# ",
-                             prot_ampl, prot_with_neurons, prot_adc_log_presc);
+                             prot_ampl, prot_with_neurons, prot_log_presc);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 } else if(stream_parse_word("on")) {
                     stimulus_t1 = 0;
@@ -230,24 +247,35 @@ void udp_task(void *pvParameters)
                     proj_state = IDLE;
                     char* str = "idle state\n# ";
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                } else {
+                    snprintf(str, sizeof(str), "    settings:\n"
+                                               "\tprot amp\t\t%4.2f\n"
+                                               "\tprot with neurons\t%d\n"
+                                               "\tprot adc log prescaller\t%d\n# ",
+                             prot_ampl, prot_with_neurons, prot_log_presc);
+                    sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
             }
             else if(stream_parse_word("adc")) {
-                if(stream_parse_word("common")&& stream_parse_word("set"))
+                if(stream_parse_word("common"))
                 {
-                    adc_zero = stream_parse_float();
-                    adc_to_current = stream_parse_float();
+                    if(stream_parse_word("set")) {
+                        adc_zero = stream_parse_float();
+                        adc_to_current = stream_parse_float();
+                    }
 
-                    snprintf(str, sizeof(str), "    settings done:\n"
-                                               "\tadc zero\t\t%4.2f\n"
-                                               "\tadc_to_current\t%4.2f\n# ",
+                    snprintf(str, sizeof(str), "    settings:\n"
+                                               "\tadc zero\t\t%4.5f\n"
+                                               "\tadc_to_current\t%4.5f\n# ",
                              adc_zero, adc_to_current);
-                    sendto(sockfd, str, sizeof(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                    sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 } else if(stream_parse_word("get")) {
                     float x = adc_get();
-                    auto sf = std::to_string(x);
-                    sf+="\n# ";
-                    sendto(sockfd, sf.c_str(), strlen(sf.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                    snprintf(str, sizeof(str), "\tadc raw\t\t%4.5f volts\n"
+                                               "\tadc-adc_zero\t%4.5f volts\n"
+                                               "\tcurrent\t%4.5f mAmps\n# ",
+                        x, x - adc_zero, (x - adc_zero)*adc_to_current*1000);
+                    sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
             } else if(stream_parse_word("current")) {
                 if(stream_parse_word("get")) {

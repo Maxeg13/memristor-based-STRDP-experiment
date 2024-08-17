@@ -86,6 +86,9 @@ extern float tau_p;
 extern float F_p;
 extern float F_m;
 
+// neurons
+extern float input_I_coeff;
+
 //protocol
 extern state_t proj_state;
 extern float prot_ampl;
@@ -289,8 +292,8 @@ void read_write_task(void*)
                         ctr++;
                         if(ctr >= prot_adc_log_presc) {
                             ctr = 0;
-                            static char str[64];
-                            snprintf(str, sizeof(str), "%9d ms n1 spike, %4.2f volts, %4.2f Amps, cond: %4.2f mS\n",
+                            static char str[70];
+                            snprintf(str, sizeof(str), "%9d ms n1 spike, %4.2f volts, %4.5f Amps, cond: %4.5f mS\n",
                                      (uint)time, trace_val, I, I/trace_val*1000);
                             proj_udp_send(str, strlen(str));
                         }
@@ -302,7 +305,7 @@ void read_write_task(void*)
                     }
 
                     // TODO:  log the I before *k
-//                    I *= k___
+                    I *= input_I_coeff;
                     I += stimulus2;
 
                     if(prot_with_neurons) {
@@ -348,8 +351,8 @@ void read_write_task(void*)
                         static int send_ctr = 0;
                         send_ctr++;
 
-                        snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.2f], ",
-                                 vac_x, (adc_get() - adc_zero) * adc_to_current);
+                        snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.4f], ",
+                                 vac_x, (adc_get() - adc_zero) * adc_to_current * 1000);
 
                         if (send_ctr > 6) {
                             send_ctr = 0;
