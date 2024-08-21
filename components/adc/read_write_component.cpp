@@ -93,7 +93,9 @@ extern float input_I_coeff;
 extern state_t proj_state;
 extern float prot_ampl;
 extern bool prot_with_neurons;
-extern int prot_adc_log_presc;
+extern int prot_log_presc;
+int prot_log_ctr1 = 0;
+int prot_log_ctr2 = 0;
 
 //protocol stimuli
 extern int stimulus_T2;
@@ -286,15 +288,16 @@ void read_write_task(void*)
                     dac_send(trace_val);
 ///////////////////////////////////////
 
+                    // TODO: accumulate logs, stop simulation, send logs
+                    // TODO: logs with timeouts
                     float I = (adc_get() - adc_zero) * adc_to_current;
                     if(trace_time == 0) {
-                        static int ctr = 0;
-                        ctr++;
-                        if(ctr >= prot_adc_log_presc) {
-                            ctr = 0;
-                            static char str[70];
-                            snprintf(str, sizeof(str), "%9d ms n1 spike, %4.2f volts, %4.5f Amps, cond: %4.5f mS\n",
-                                     (uint)time, trace_val, I, I/trace_val*1000);
+                        prot_log_ctr1++;
+                        if(prot_log_ctr1 >= prot_log_presc) {
+                            prot_log_ctr1 = 0;
+                            static char str[78];
+                            snprintf(str, sizeof(str), "%9d ms n1 spike, trace: %4.2f volts, %4.5f mAmps, cond: %4.5f mS\n",
+                                     (uint)time, trace_val, I/1000., I/trace_val);
                             proj_udp_send(str, strlen(str));
                         }
                     }
@@ -305,21 +308,35 @@ void read_write_task(void*)
                     }
 
                     // TODO:  log the I before *k
+                    float log_I = I;
+
                     I *= input_I_coeff;
                     I += stimulus2;
 
+                    bool spiked = false;
                     if(prot_with_neurons) {
                         if (n2.eval(I)) {
-                            dac_send(trace_val * prot_ampl);
-                            esp_rom_delay_us(5);
-                            dac_send(trace_val);
+                            spiked = true;
                         }
                     } else {
                         if(stimulus_t2 == 0) {
-                            dac_send(trace_val * prot_ampl);
-                            esp_rom_delay_us(5);
-                            dac_send(trace_val);
+                            spiked = true;
                         }
+                    }
+
+                    if(spiked) {
+                        // "programming synapse"
+                        prot_log_ctr2++;
+                        if(prot_log_ctr2 >= prot_log_presc) {
+                            prot_log_ctr2 = 0;
+                            static char str[78];
+                            snprintf(str, sizeof(str), "%9d ms n2 spike, input I = %4.5f mAmps\n",
+                                     (uint)time, log_I);
+                            proj_udp_send(str, strlen(str));
+                        }
+                        dac_send(trace_val * prot_ampl);
+                        esp_rom_delay_us(5);
+                        dac_send(trace_val);
                     }
                 }
                     break;
@@ -352,7 +369,7 @@ void read_write_task(void*)
                         send_ctr++;
 
                         snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.4f], ",
-                                 vac_x, (adc_get() - adc_zero) * adc_to_current * 1000);
+                                 vac_x, (adc_get() - adc_zero) * adc_to_current);
 
                         if (send_ctr > 6) {
                             send_ctr = 0;
