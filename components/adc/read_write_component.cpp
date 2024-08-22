@@ -92,7 +92,7 @@ extern float input_I_coeff;
 //protocol
 extern state_t proj_state;
 extern float prot_ampl;
-extern bool prot_with_neurons;
+extern bool prot_fake_neurons;
 extern int prot_log_presc;
 int prot_log_ctr1 = 0;
 int prot_log_ctr2 = 0;
@@ -131,12 +131,11 @@ static int voltage;
 static bool example_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle);
 static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 
-// means after amplifier, memristor in
+// x means voltage after amplifier, memristor in
 void dac_send(float x) {
     #define kOhm
-//    #define ADJUSTMENT
 
-    static const float tovolts = 10 kOhm /4.7 kOhm * 3. /DAC_RANGE;
+    static const float tovolts = 10 kOhm /4.7 kOhm * 3.3 /DAC_RANGE;
     static const float todac = 1/tovolts;
 
     int16_t xi = x*todac + DAC_RANGE/2;
@@ -276,12 +275,12 @@ void read_write_task(void*)
                         stimulus1 = stimulusA1;
                     }
 
-                    if(prot_with_neurons) {
+                    if(prot_fake_neurons) {
+                        trace_time = stimulus_t1;
+                    } else {
                         if (n1.eval(stimulus1)) {
                             trace_time = 0;
                         }
-                    } else {
-                        trace_time = stimulus_t1;
                     }
 
                     trace_val = trace(trace_time);
@@ -314,12 +313,12 @@ void read_write_task(void*)
                     I += stimulus2;
 
                     bool spiked = false;
-                    if(prot_with_neurons) {
-                        if (n2.eval(I)) {
+                    if(prot_fake_neurons) {
+                        if(stimulus_t2 == 0) {
                             spiked = true;
                         }
                     } else {
-                        if(stimulus_t2 == 0) {
+                        if (n2.eval(I)) {
                             spiked = true;
                         }
                     }
@@ -330,8 +329,13 @@ void read_write_task(void*)
                         if(prot_log_ctr2 >= prot_log_presc) {
                             prot_log_ctr2 = 0;
                             static char str[78];
-                            snprintf(str, sizeof(str), "%9d ms n2 spike, input I = %4.5f mAmps\n",
-                                     (uint)time, log_I);
+                            if(prot_fake_neurons) {
+                                snprintf(str, sizeof(str), "%9d ms n2 spike\n",
+                                         (uint) time);
+                            } else {
+                                snprintf(str, sizeof(str), "%9d ms n2 spike, input I = %4.5f mAmps\n",
+                                         (uint) time, log_I);
+                            }
                             proj_udp_send(str, strlen(str));
                         }
                         dac_send(trace_val * prot_ampl);

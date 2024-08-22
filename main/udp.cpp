@@ -28,7 +28,7 @@ float input_I_coeff = 1;
 //protocol
 state_t proj_state = IDLE;
 float prot_ampl = 2;
-bool prot_with_neurons = true;
+bool prot_fake_neurons = false;
 int prot_log_presc = 1;
 
 //protocol stimuli
@@ -167,7 +167,7 @@ void udp_task(void *pvParameters)
                                    "<F plus (float volts)>  <F minus (float volts)>\n"
                                    "    stimuli set <stimulus_T1 (uint ms)> <stimulus_A1 (float)> <stimulus_T2 (uint ms)> "
                                    "<stimulus_A2 (float)> <stimulus_delay2 (uint ms)>\n"
-                                   "    protocol set <amplification (float)> <with neurons [1 | 0]> <adc log prescaller (uint)>\n"
+                                   "    protocol set <amplification (float)> <with fake neurons [1 | 0]> <adc log prescaller (uint)>\n"
                                    "    adc common set <adc zero (float Volts)> <adc_to_current (float Amps/Volts)>\n"
                                    "    [protocol [on | off]] | <Enter>\t\t\t\t- start/stop stimuli\n\n"
                                    ""
@@ -226,14 +226,14 @@ void udp_task(void *pvParameters)
                 if(stream_parse_word("set"))
                 {
                     prot_ampl = stream_parse_float();
-                    prot_with_neurons = stream_parse_int();
+                    prot_fake_neurons = stream_parse_int();
                     prot_log_presc = stream_parse_int();
 
                     snprintf(str, sizeof(str), "    settings:\n"
                                                "\tprot amp\t\t%4.2f\n"
-                                               "\tprot with neurons\t%d\n"
+                                               "\tprot fake neurons\t%d\n"
                                                "\tprot adc log prescaller\t%d\n# ",
-                             prot_ampl, prot_with_neurons, prot_log_presc);
+                             prot_ampl, prot_fake_neurons, prot_log_presc);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 } else if(stream_parse_word("on")) {
                     stimulus_t1 = 0;
@@ -252,7 +252,7 @@ void udp_task(void *pvParameters)
                                                "\tprot amp\t\t%4.2f\n"
                                                "\tprot with neurons\t%d\n"
                                                "\tprot adc log prescaller\t%d\n# ",
-                             prot_ampl, prot_with_neurons, prot_log_presc);
+                             prot_ampl, prot_fake_neurons, prot_log_presc);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
             }
