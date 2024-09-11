@@ -13,7 +13,8 @@ static const char *TAG = "udp";
 //////////////////////////
 
 // common
-float adc_zero = 1.73;
+float dac_offset = 0;
+float adc_offset = -1.73;
 float adc_to_current = 2.2/2.58;
 
 // trace
@@ -168,7 +169,8 @@ void udp_task(void *pvParameters)
                                    "    stimuli set <stimulus_T1 (uint ms)> <stimulus_A1 (float)> <stimulus_T2 (uint ms)> "
                                    "<stimulus_A2 (float)> <stimulus_delay2 (uint ms)>\n"
                                    "    protocol set <amplification (float)> <with fake neurons [1 | 0]> <adc log prescaller (uint)>\n"
-                                   "    adc common set <adc zero (float Volts)> <adc_to_current (float Amps/Volts)>\n"
+                                   "    adc common set <adc offset (float Volts)> <adc_to_current (float Amps/Volts)>\n"
+                                   "    dac common set <dac offset (float Volts)>\n"
                                    "    [protocol [on | off]] | <Enter>\t\t\t\t- start/stop stimuli\n\n"
                                    ""
                                    "tests usage:\n"
@@ -250,7 +252,7 @@ void udp_task(void *pvParameters)
                 } else {
                     snprintf(str, sizeof(str), "    settings:\n"
                                                "\tprot amp\t\t%4.2f\n"
-                                               "\tprot with neurons\t%d\n"
+                                               "\tprot fake neurons\t%d\n"
                                                "\tprot adc log prescaller\t%d\n# ",
                              prot_ampl, prot_fake_neurons, prot_log_presc);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
@@ -260,21 +262,21 @@ void udp_task(void *pvParameters)
                 if(stream_parse_word("common"))
                 {
                     if(stream_parse_word("set")) {
-                        adc_zero = stream_parse_float();
+                        adc_offset = stream_parse_float();
                         adc_to_current = stream_parse_float();
                     }
 
                     snprintf(str, sizeof(str), "    settings:\n"
                                                "\tadc zero\t\t%4.5f\n"
                                                "\tadc_to_current\t%4.5f\n# ",
-                             adc_zero, adc_to_current);
+                             adc_offset, adc_to_current);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 } else if(stream_parse_word("get")) {
                     float x = adc_get();
                     snprintf(str, sizeof(str), "\tadc raw\t\t%4.5f volts\n"
-                                               "\tadc-adc_zero\t%4.5f volts\n"
+                                               "\tadc+adc_offset\t%4.5f volts\n"
                                                "\tcurrent\t%4.5f mAmps\n# ",
-                        x, x - adc_zero, (x - adc_zero)*adc_to_current*1000);
+                        x, x + adc_offset, (x + adc_offset)*adc_to_current*1000);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
             } else if(stream_parse_word("current")) {
@@ -286,11 +288,19 @@ void udp_task(void *pvParameters)
                     cur+="\n# ";
                     sendto(sockfd, cur.c_str(), strlen(cur.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
-            } else if(stream_parse_word("dac") && stream_parse_word("set")) {
-                float x = stream_parse_float();
-                dac_send(x);
-                std::string s = "# ";
-                sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+            } else if(stream_parse_word("dac"))  {
+                if(stream_parse_word("set")) {
+                    float x = stream_parse_float();
+                    dac_send(x);
+                    std::string s = "# ";
+                    sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                } else if(stream_parse_word("common")) {
+                    if(stream_parse_word("set")) {
+                        dac_offset = stream_parse_float();
+                        std::string s = "# ";
+                        sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
+                    }
+                }
             } else if(stream_parse_word("vac")) {
                 if(stream_parse_word("A")||stream_parse_word("a")) {
                     if (stream_parse_word("+=")) {
@@ -325,7 +335,9 @@ void udp_task(void *pvParameters)
                     proj_state = IDLE;
                     std::string s = "idle state\n# ";
                     sendto(sockfd, s.c_str(), strlen(s.c_str()), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
-
+                } else {
+                    const char* help =  "failed to parse the incoming packet\n# ";
+                    sendto(sockfd, help, strlen(help), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
                 }
 
                 vac_finish = 2 * (vac_a - vac_b) / vac_step;

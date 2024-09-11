@@ -77,7 +77,8 @@ const float Neuron::d = 8;
 uint64_t led_mode_count;
 
 // common
-extern float adc_zero;
+extern float dac_offset;
+extern float adc_offset;
 extern float adc_to_current;
 
 // trace
@@ -91,6 +92,7 @@ extern float input_I_coeff;
 
 //protocol
 extern state_t proj_state;
+state_t proj_state_prev = IDLE;
 extern float prot_ampl;
 extern bool prot_fake_neurons;
 extern int prot_log_presc;
@@ -121,7 +123,7 @@ extern float stimulus_t2;
 extern bool protocol_once;
 
 float trace(float t) {
-    return F_p * exp(-t/tau_p) - F_m/(1 + exp(-(t - sigmoid_delay)/tau_p));
+    return F_p * exp(-t/tau_p) + F_m/(1 + exp(-(t - sigmoid_delay)/tau_p));
 }
 
 #define EXAMPLE_ADC_ATTEN           ADC_ATTEN_DB_11
@@ -131,19 +133,18 @@ static int voltage;
 static bool example_adc_calibration_init(adc_unit_t unit, adc_channel_t channel, adc_atten_t atten, adc_cali_handle_t *out_handle);
 static void example_adc_calibration_deinit(adc_cali_handle_t handle);
 
-// x means voltage after amplifier, memristor in
+// x means voltage after amplifier, memristor's in
 void dac_send(float x) {
     #define kOhm
 
     static const float tovolts = 10 kOhm /4.7 kOhm * 3.3 /DAC_RANGE;
     static const float todac = 1/tovolts;
 
-    int16_t xi = x*todac + DAC_RANGE/2;
+    int16_t xi = (x + dac_offset)*todac + DAC_RANGE/2;
 
     static uint8_t mas[2];
 
-    if(xi < 0)
-    {
+    if(xi < 0) {
         xi = 0;
     } else if(xi >= DAC_RANGE) {
         xi = DAC_RANGE;
@@ -256,6 +257,13 @@ void read_write_task(void*)
         // main
         size_t count_diff = now_count - main_count;
         for (int step = 0; step < count_diff; step++) {
+            // reset dac value
+            if((proj_state == IDLE) && (proj_state_prev != IDLE)) {
+                dac_send(0);
+            }
+            proj_state_prev = proj_state;
+            /////////////
+
             main_count += 1;
             switch (proj_state) {
                 case PROTOCOL: {
@@ -289,7 +297,7 @@ void read_write_task(void*)
 
                     // TODO: accumulate logs, stop simulation, send logs
                     // TODO: logs with timeouts
-                    float I = (adc_get() - adc_zero) * adc_to_current;
+                    float I = (adc_get() + adc_offset) * adc_to_current;
                     if(trace_time == 0) {
                         prot_log_ctr1++;
                         if(prot_log_ctr1 >= prot_log_presc) {
@@ -373,7 +381,7 @@ void read_write_task(void*)
                         send_ctr++;
 
                         snprintf(str+strlen(str), sizeof(str) - strlen(str) - 1, "[%4.2f, %4.4f], ",
-                                 vac_x, (adc_get() - adc_zero) * adc_to_current);
+                                 vac_x, (adc_get() + adc_offset) * adc_to_current);
 
                         if (send_ctr > 6) {
                             send_ctr = 0;
