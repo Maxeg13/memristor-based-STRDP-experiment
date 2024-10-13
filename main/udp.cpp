@@ -267,7 +267,7 @@ void udp_task(void *pvParameters)
                     }
 
                     snprintf(str, sizeof(str), "    settings:\n"
-                                               "\tadc zero\t\t%4.5f\n"
+                                               "\tadc_offset\t%4.5f\n"
                                                "\tadc_to_current\t%4.5f\n# ",
                              adc_offset, adc_to_current);
                     sendto(sockfd, str, strlen(str), 0, (struct sockaddr *) &cliaddr, sizeof(cliaddr));
